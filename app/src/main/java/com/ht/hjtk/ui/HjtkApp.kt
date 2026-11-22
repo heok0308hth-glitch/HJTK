@@ -50,6 +50,7 @@ fun HjtkApp(vm: MainVm) {
                         Route.Onboarding -> Onboarding(vm)
                         Route.Memory -> MemoryScreen(vm)
                         Route.MailAdd -> MailAddScreen(vm)
+                        Route.Pet -> PetScreen(vm)
                         is Route.Job -> JobScreen(vm, r.id)
                         is Route.Command -> CommandScreen(vm, r.id)
                         is Route.PipelineEdit -> PipelineEditScreen(vm, r.id)

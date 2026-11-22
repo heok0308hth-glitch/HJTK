@@ -113,17 +113,23 @@ class AgentService : Service() {
 @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
 class Mascot(private val svc: Service) : View(svc) {
     private val wm = svc.getSystemService(WindowManager::class.java)
-    private val atlas: Bitmap = BitmapFactory.decodeResource(svc.resources, R.drawable.mascot_atlas, BitmapFactory.Options().apply { inScaled = false })
-    private val frames = intArrayOf(6, 8, 8, 4, 5, 8, 6, 6, 6, 8, 8)
+    // 기본 마스코트 또는 사용자가 가져온 스프라이트 시트(PetPack). 역할 → 행 매핑으로 그린다.
+    private var pack = com.ht.hjtk.engine.PetPack.load(svc).also { paintBmpFilter(it) }
+    private fun paintBmpFilter(p: com.ht.hjtk.engine.PetPack.Pack) { if (::paintBmpField.isInitialized) paintBmpField.isFilterBitmap = !p.custom }
+    private lateinit var paintBmpField: Paint
     private val d = svc.resources.displayMetrics.density
     private val cat = (78 * d).toInt()
     private val bubbleW = (220 * d).toInt()
     private val bubbleH = (86 * d).toInt()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + com.ht.hjtk.engine.CrashLog.handler("service"))
 
-    private enum class Anim(val row: Int, val fps: Int, val loop: Boolean) {
-        IDLE(0, 5, true), RUN_R(1, 12, true), RUN_L(2, 12, true), WAVE(3, 6, true), JUMP(4, 10, false), SLEEP(5, 3, true),
-        SIT(6, 4, true), LOAF(7, 4, true), POUT(8, 4, true), LOOK(9, 6, true), SNEAK(10, 8, true)
+    private enum class Anim(val role: com.ht.hjtk.engine.PetPack.Role) {
+        IDLE(com.ht.hjtk.engine.PetPack.Role.IDLE), RUN_R(com.ht.hjtk.engine.PetPack.Role.RUN_R), RUN_L(com.ht.hjtk.engine.PetPack.Role.RUN_L),
+        WAVE(com.ht.hjtk.engine.PetPack.Role.WAVE), JUMP(com.ht.hjtk.engine.PetPack.Role.JUMP), SLEEP(com.ht.hjtk.engine.PetPack.Role.SLEEP),
+        SIT(com.ht.hjtk.engine.PetPack.Role.SIT), LOAF(com.ht.hjtk.engine.PetPack.Role.LOAF), POUT(com.ht.hjtk.engine.PetPack.Role.POUT),
+        LOOK(com.ht.hjtk.engine.PetPack.Role.LOOK), SNEAK(com.ht.hjtk.engine.PetPack.Role.SNEAK);
+        val fps get() = role.fps
+        val loop get() = role.loop
     }
     private var anim = Anim.IDLE; private var frame = 0; private var mirror = false
     private var x = 0f; private var targetX = -1f
@@ -135,7 +141,7 @@ class Mascot(private val svc: Service) : View(svc) {
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START }
     private var baseY = 0
 
-    private val paintBmp = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val paintBmp = Paint(Paint.FILTER_BITMAP_FLAG).also { paintBmpField = it; it.isFilterBitmap = !pack.custom }   // 도트 시트는 최근접 보간(선명하게)
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF121212.toInt() }
     private val red = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE2442F.toInt() }
     private val textP = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -150,6 +156,8 @@ class Mascot(private val svc: Service) : View(svc) {
         runCatching { wm.addView(this, lp) }
         scope.launch { tick() }
         scope.launch { brain() }
+        // 설정에서 펫을 바꾸면 바로 반영
+        scope.launch { com.ht.hjtk.engine.PetPack.version.collect { v -> if (v > 0) { pack = com.ht.hjtk.engine.PetPack.load(svc); paintBmpFilter(pack); frame = 0; invalidate() } } }
         cue(PetCue("일하는 중이에요. 5분마다 알려드릴게요", PetCue.Kind.HELLO))
     }
 
@@ -197,7 +205,7 @@ class Mascot(private val svc: Service) : View(svc) {
             }
             if (acc >= 1000L / anim.fps) {
                 acc = 0
-                val n = frames[anim.row]
+                val n = pack.count(anim.role)
                 frame = if (anim.loop) (frame + 1) % n else minOf(frame + 1, n - 1)
                 if (!anim.loop && frame == n - 1) { delay(300); play(Anim.IDLE) }
                 invalidate()
@@ -228,9 +236,10 @@ class Mascot(private val svc: Service) : View(svc) {
         val catLeft = (x - lp.x).coerceIn(0f, (width - cat).toFloat())
         val catTop = (height - cat).toFloat()
         bubble?.let { drawBubble(c, it, catLeft) }
-        val src = Rect(frame * 160, anim.row * 160, frame * 160 + 160, anim.row * 160 + 160)
+        val cs = pack.cell; val row = pack.row(anim.role); val f = frame.coerceIn(0, pack.count(anim.role) - 1)
+        val src = Rect(f * cs, row * cs, f * cs + cs, row * cs + cs)
         val dst = RectF(catLeft, catTop, catLeft + cat, catTop + cat)
-        if (mirror) { c.save(); c.scale(-1f, 1f, dst.centerX(), dst.centerY()); c.drawBitmap(atlas, src, dst, paintBmp); c.restore() } else c.drawBitmap(atlas, src, dst, paintBmp)
+        if (mirror) { c.save(); c.scale(-1f, 1f, dst.centerX(), dst.centerY()); c.drawBitmap(pack.atlas, src, dst, paintBmp); c.restore() } else c.drawBitmap(pack.atlas, src, dst, paintBmp)
     }
 
     private fun drawBubble(c: Canvas, text: String, catLeft: Float) {

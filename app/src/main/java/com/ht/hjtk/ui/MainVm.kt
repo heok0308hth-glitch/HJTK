@@ -14,6 +14,7 @@ import com.ht.hjtk.data.Msg
 import com.ht.hjtk.data.Role
 import com.ht.hjtk.tools.MiniMarkdown
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -35,6 +36,7 @@ sealed interface Route {
     data class Command(val id: String) : Route
     data class PipelineEdit(val id: String?) : Route
     data object MailAdd : Route
+    data object Pet : Route
 }
 
 enum class Mode(val label: String) { AUTO("자동"), QUICK("대화"), MISSION("작업 맡기기") }
@@ -86,6 +88,12 @@ class MainVm(val h: Hjtk) {
         val last = store.messages.value[cid]?.lastOrNull { it.role == Role.USER } ?: return
         val text = last.meta["expanded"] ?: last.text
         if (last.meta["mission"] == "true") runner.startMission(cid, text) else runner.quickAsk(cid, text)
+    }
+
+    /** 답을 기억에 저장(다음 작업부터 DeepSeek에게 맥락으로 전달) */
+    fun remember(text: String) {
+        val m = com.ht.hjtk.core.Memory(store.id("mem"), text.take(600), "대화", System.currentTimeMillis())
+        store.memories.update { it + m }; store.persistHub()
     }
 
     fun runCommand(call: CommandCall) { store.msg(convId.value, Role.USER, "/${call.cmd} " + call.args.values.joinToString(" ")); runner.runDirect(convId.value, call); tab(Route.Chat) }

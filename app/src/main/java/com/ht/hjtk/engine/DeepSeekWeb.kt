@@ -26,6 +26,7 @@ import com.ht.hjtk.core.agent.LlmPort
 import com.ht.hjtk.core.agent.LlmReply
 import com.ht.hjtk.core.stream.DeepSeekPatchAssembler
 import com.ht.hjtk.core.stream.DeltaExtractor
+import com.ht.hjtk.core.stream.HistoryExtract
 import com.ht.hjtk.core.stream.SnapshotReconciler
 import com.ht.hjtk.core.stream.SseParser
 import com.ht.hjtk.core.stream.TerminationGate
@@ -60,6 +61,8 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
     val lastVia = MutableStateFlow("")
     /** 조종석 아래 한 줄 진단(사람이 읽는 상태) */
     val diag = MutableStateFlow("")
+    /** 지금 받는 중인 답(스트림이 열린 동안 계속 갱신) — 대화 화면이 글자를 실시간으로 그린다 */
+    val partial = MutableStateFlow("")
 
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var web: WebView? = null
@@ -82,6 +85,7 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
         data class Chunk(val id: String, val text: String) : Tap
         data class End(val id: String, val why: String) : Tap
         data class Clip(val text: String) : Tap
+        data class Hist(val json: String) : Tap
     }
 
     /** 브리지는 텍스트만 받는다. 파일·네트워크·실행 권한을 주지 않는다. (JS 스레드에서 호출됨 → 채널로만 넘긴다) */
@@ -91,6 +95,7 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
         @JavascriptInterface fun end(id: String, why: String) { events.trySend(Tap.End(id, why)) }
         @JavascriptInterface fun clip(text: String) { if (text.length in 2..400_000) events.trySend(Tap.Clip(text)) }
         @JavascriptInterface fun href(url: String) { if (url.startsWith(ORIGIN)) lastUrl = url }
+        @JavascriptInterface fun hist(json: String) { events.trySend(Tap.Hist(json)) }
         @JavascriptInterface fun protocolVersion(): Int = 2
     }
 
@@ -329,8 +334,9 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
 
     private suspend fun attempt(text: String, newSession: Boolean, t0: Long): LlmReply {
         fun fail(via: String) = LlmReply("", via, false, System.currentTimeMillis() - t0)
-        ui { ensureWeb(); place(); if (newSession) web?.loadUrl(ORIGIN) }
-        if (newSession) delay(500)
+        partial.value = ""
+        ui { ensureWeb(); place() }
+        if (newSession) freshChat()
         when (waitReady(if (newSession) 20_000 else 15_000)) {
             Status.LOGIN -> return fail("NEEDS_LOGIN")
             Status.CHALLENGE -> return fail("CHALLENGE")
@@ -341,19 +347,30 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
         while (events.tryReceive().isSuccess) { /* 이전 잔여 이벤트 비우기 */ }
         diag.value = "보내는 중"
 
+        // 기준점: 지금 화면의 답 개수/마지막 답. 이후 이것과 다른 '새 답'만 인정한다.
+        val mark = runCatching { JSONObject(js("window.__hjtkMark?window.__hjtkMark():'{}'").ifBlank { "{}" }) }.getOrDefault(JSONObject())
+        val round = Round(mark.optInt("n", 0), mark.optString("last", ""), text)
+
         val put = js("window.__hjtkSend(${JSONObject.quote(text)})")
         if (put.isEmpty()) return fail(if (web == null) VIA_GONE else "NOT_READY")
         if (!put.startsWith("OK")) return fail("INPUT_$put")
-        delay(300)
-        // 전송: Enter → (스트림이 안 열리면) 전송 버튼 → 네이티브 Enter
+        delay(120)
         js("window.__hjtkEnter()")
-        val round = Round()
-        if (!round.waitOpen(2_500)) {
-            js("window.__hjtkClickSend()")
-            if (!round.waitOpen(3_000)) {
+
+        // 제출 확인: 스트림이 열렸거나 입력창이 비었으면(React가 비움) 보낸 것이다.
+        // 보낸 뒤에는 절대 버튼을 누르지 않는다 — 생성 중의 그 자리는 '중지' 버튼이라 답을 취소해 버린다.
+        val started = System.currentTimeMillis()
+        var clicked = false; var native = false; var submitted = false
+        while (System.currentTimeMillis() - started < 7_000) {
+            if (round.waitOpen(250)) { submitted = true; break }
+            val box = js(BOX_JS, 1_500).toIntOrNull() ?: -1
+            if (box == 0) { submitted = true; break }
+            val el = System.currentTimeMillis() - started
+            if (!clicked && el > 1_000) { clicked = true; js("window.__hjtkClickSend()") }
+            else if (!native && el > 3_000) {
+                native = true
                 ui {
-                    val w = web
-                    if (w != null) {
+                    web?.let { w ->
                         val now = android.os.SystemClock.uptimeMillis()
                         w.dispatchKeyEvent(android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER, 0))
                         w.dispatchKeyEvent(android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER, 0))
@@ -361,11 +378,26 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
                 }
             }
         }
+        if (!submitted) return fail("NOT_SENT")
         diag.value = "답을 받는 중"
         val r = round.collect(t0)
         js("location.href", 1_500).takeIf { it.startsWith(ORIGIN) }?.let { lastUrl = it }
         diag.value = if (r.text.isNotEmpty()) "연결됨 · ${r.via}" else "답을 읽지 못함 · ${r.via}"
         return r
+    }
+
+    /** 새 대화: 페이지를 다시 읽지 않고 DeepSeek의 '새 대화' 버튼을 누른다(2~4초 → 0.3초). 실패하면 주소를 연다. */
+    private suspend fun freshChat() {
+        val onChatPage = lastUrl?.let { it.startsWith(ORIGIN) && !it.contains("sign_in") } == true && status.value == Status.READY
+        if (onChatPage) {
+            val path = lastUrl.orEmpty().removePrefix(ORIGIN)
+            if (path == "" || path == "/") return   // 이미 빈 새 대화
+            if (js("window.__hjtkNewChat?window.__hjtkNewChat():'NONE'") == "OK") {
+                repeat(10) { delay(120); val u = js("location.pathname", 800); if (u == "/" || u.isEmpty()) { lastUrl = ORIGIN; return } }
+            }
+        }
+        ui { web?.loadUrl(ORIGIN) }
+        delay(400)
     }
 
     private suspend fun recover(t0: Long): LlmReply? {
@@ -385,8 +417,12 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
         return last.takeIf { it.isNotEmpty() }?.let { LlmReply(it, "P1_RECOVERED", false, System.currentTimeMillis() - t0) }
     }
 
-    /** 한 번의 왕복. P0(스트림) → P1(DOM) → P4(복사) 순으로 강등 */
-    private inner class Round {
+    /**
+     * 한 번의 왕복. 세 개의 독립된 출처를 대조한다.
+     *  P0 스트림(페이지 자신의 응답을 지나가며 읽음) · P1 화면의 '새' 답 노드 · P2 서버 기록(보낸 질문과 짝이 맞는 답)
+     * 하나가 놓쳐도 다른 하나가 받는다. 이전 답은 기준점(n0,last0) 때문에 절대 새 답으로 오인되지 않는다.
+     */
+    private inner class Round(private val n0: Int, private val last0: String, private val prompt: String) {
         private var streamId: String? = null
         private val asm = DeepSeekPatchAssembler()
         private val rec = SnapshotReconciler()
@@ -401,6 +437,7 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
         private var ended = false
         var gone = false; private set
         private var clip: String? = null
+        private var hist: String? = null
         private val gate = TerminationGate()
         private val buffered = ArrayList<Tap.Chunk>()
 
@@ -424,35 +461,65 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
                     t.id == streamId -> { sse.finish(); ended = true }
                 }
                 is Tap.Clip -> clip = t.text
+                is Tap.Hist -> hist = t.json
             }
         }
 
         fun answer(): String = asm.answer().ifEmpty { rec.text() }
 
+        private suspend fun domNew(): String = js("window.__hjtkNewAnswer?window.__hjtkNewAnswer($n0,${JSONObject.quote(last0)}):''").trim()
+
+        /** 화면의 새 답이 더 이상 자라지 않을 때까지(연속 2회 동일) */
+        private suspend fun domStable(maxMs: Long): String {
+            var prev = ""; var same = 0
+            val end = System.currentTimeMillis() + maxMs
+            while (System.currentTimeMillis() < end && same < 2) {
+                val d = domNew()
+                if (d.isNotEmpty() && d == prev) same++ else same = 0
+                prev = d
+                if (same < 2) delay(500)
+            }
+            return prev
+        }
+
+        private suspend fun history(): String? {
+            hist = null
+            if (js("window.__hjtkHistory?window.__hjtkHistory():'NONE'") != "OK") return null
+            withTimeoutOrNull(6_000) { while (hist == null) handle(events.receive()) }
+            return hist?.let { HistoryExtract.lastAnswerFor(it, prompt) }
+        }
+
         suspend fun collect(t0: Long): LlmReply {
+            fun reply(text: String, via: String, done: Boolean) = LlmReply(text, via, done, System.currentTimeMillis() - t0)
             gate.start(System.currentTimeMillis())
+            var lastDom = 0L; var domPrev = ""; var domSame = 0
             while (!gone) {
                 val now = System.currentTimeMillis()
-                val v = gate.poll(now, answer().length, asm.finished || generic || ended, false)
+                val a = answer()
+                if (a.isNotEmpty() && a.length != partial.value.length) partial.value = a
+                val v = gate.poll(now, a.length, asm.finished || generic || ended, false)
                 if (v != TerminationGate.Verdict.RUNNING) break
-                withTimeoutOrNull(300) { handle(events.receive()) }
+                // 스트림을 못 잡고 있다면 화면을 곁눈질: 새 답이 완성돼 멈춰 있으면 기다리지 않고 바로 받는다
+                if (streamId == null && now - lastDom > 1_200) {
+                    lastDom = now
+                    val d = domNew()
+                    if (d.isNotEmpty()) { partial.value = d; if (d == domPrev) domSame++ else domSame = 0; domPrev = d }
+                    if (domSame >= 2) return reply(d, "P1_DOM", false)
+                }
+                withTimeoutOrNull(250) { handle(events.receive()) }
             }
             val a = answer().trim()
-            if (gone) return LlmReply(a, if (a.isEmpty()) VIA_GONE else "P0_PARTIAL", false, System.currentTimeMillis() - t0)
-            if (a.isNotEmpty()) return LlmReply(a, "P0_STREAM", asm.finished || ended || generic, System.currentTimeMillis() - t0)
-            // P1: DOM 마지막 답변(스트림을 못 잡은 경우) — 글자가 멈출 때까지 짧게 본다
-            var dom = ""; var same = 0
-            repeat(8) {
-                if (same >= 2) return@repeat
-                delay(900)
-                val d = js(LAST_ANSWER_JS).trim()
-                if (d.isNotEmpty() && d == dom) same++ else same = 0
-                dom = d
-            }
-            if (web == null) return LlmReply("", VIA_GONE, false, System.currentTimeMillis() - t0)
-            if (dom.isNotEmpty()) return LlmReply(dom, "P1_DOM", false, System.currentTimeMillis() - t0)
-            clip?.let { return LlmReply(it, "P4_CLIP", false, System.currentTimeMillis() - t0) }
-            return LlmReply("", "NONE", false, System.currentTimeMillis() - t0)
+            if (gone) return reply(a, if (a.isEmpty()) VIA_GONE else "P0_PARTIAL", false)
+            val streamDone = asm.finished || ended || generic
+            if (a.isNotEmpty() && streamDone) return reply(a, "P0_STREAM", true)
+            // 스트림이 비었거나 끝 표시 없이 멈췄다 → 화면의 새 답과 대조해 더 긴 쪽
+            val dom = domStable(if (a.isEmpty()) 6_000 else 2_500)
+            if (web == null) return reply("", VIA_GONE, false)
+            if (dom.length > a.length) return reply(dom, "P1_DOM", false)
+            if (a.isNotEmpty()) return reply(a, "P0_STREAM", false)
+            history()?.let { return reply(it, "P2_HISTORY", true) }
+            clip?.let { return reply(it, "P4_CLIP", false) }
+            return reply("", "NONE", false)
         }
     }
 
@@ -466,6 +533,7 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
         const val VIA_GONE = "RENDERER_GONE"
         private const val STATE_JS = "(function(){try{if(window.__hjtkState)return window.__hjtkState();return document.readyState==='complete'?'NOTAP':'LOADING'}catch(e){return 'LOADING'}})()"
         private const val LAST_ANSWER_JS = "(window.__hjtkLastAnswer&&window.__hjtkLastAnswer())||''"
+        private const val BOX_JS = "(window.__hjtkBox?window.__hjtkBox():-1)"
         fun decodeJs(r: String?): String {
             val t = r ?: return ""
             if (t == "null") return ""

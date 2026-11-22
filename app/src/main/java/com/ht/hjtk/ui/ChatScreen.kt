@@ -95,8 +95,9 @@ fun ChatScreen(vm: MainVm) {
         Box(Modifier.weight(1f)) {
             if (msgs.isEmpty()) { if (ime) Spacer(Modifier.fillMaxSize()) else EmptyChat(vm) }
             else LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)) {
-                items(msgs, key = { it.id }, contentType = { it.kind }) { m -> MessageView(vm, m); Spacer(Modifier.height(10.dp)) }
-                if (thinking) item(key = "thinking", contentType = "thinking") { Thinking() }
+                val lastAi = msgs.lastOrNull { it.role == Role.AI && it.kind == "text" }?.id
+                items(msgs, key = { it.id }, contentType = { it.kind }) { m -> MessageView(vm, m, actions = m.id == lastAi && !thinking); Spacer(Modifier.height(10.dp)) }
+                if (thinking) item(key = "thinking", contentType = "thinking") { Thinking(vm, cid) }
             }
             if (!atBottom && msgs.size > 4) Row(
                 Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp).clip(RoundedCornerShape(50)).background(C.Ink)
@@ -112,13 +113,20 @@ fun ChatScreen(vm: MainVm) {
 }
 
 @Composable
-private fun Thinking() {
+private fun Thinking(vm: MainVm, cid: String) {
     // 경과 초를 보여 준다: '멈췄나?'와 '생각 중'을 사용자가 구분할 수 있게
     var sec by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) { if (Motion.enabled) while (true) { delay(1000); sec++ } }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
-        SignalDot(C.Ink, 6.dp, pulse = true); Spacer(Modifier.width(8.dp))
-        Label(if (sec < 3) "DeepSeek에게 묻는 중" else "DeepSeek에게 묻는 중 · ${sec}초")
+    val owner by vm.runner.streamingConv.collectAsState()
+    val live by vm.h.deepseek.partial.collectAsState()
+    val text = if (owner == cid) remember(live) { com.ht.hjtk.core.stream.AepView.clean(live) } else ""
+    Column(Modifier.fillMaxWidth().padding(end = 24.dp, top = 2.dp, bottom = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SignalDot(C.Ink, 6.dp, pulse = true); Spacer(Modifier.width(8.dp))
+            Label(when { text.isNotEmpty() -> "DeepSeek · 받는 중"; sec < 3 -> "DeepSeek에게 묻는 중"; else -> "DeepSeek에게 묻는 중 · ${sec}초" })
+        }
+        // 글자가 도착하는 대로 그린다(완료되면 같은 자리에 정식 메시지로 바뀐다)
+        if (text.isNotEmpty()) { Spacer(Modifier.height(4.dp)); MdText(text) }
     }
 }
 
@@ -215,7 +223,7 @@ private fun KV(k: String, v: String) {
 }
 
 @Composable
-fun MessageView(vm: MainVm, m: Msg) {
+fun MessageView(vm: MainVm, m: Msg, actions: Boolean = false) {
     when (m.kind) {
         "cmd" -> CmdRow(m)
         "report" -> ReportCard(m)
@@ -230,7 +238,7 @@ fun MessageView(vm: MainVm, m: Msg) {
             Box(Modifier.width(14.dp).height(1.dp).background(C.Hair)); Spacer(Modifier.width(8.dp)); Text(m.text, style = T.small.copy(fontSize = 12.sp, color = C.Mute))
         }
         "error" -> ErrorRow(vm, m)
-        else -> if (m.role == Role.USER) UserBubble(m) else AiText(m)
+        else -> if (m.role == Role.USER) UserBubble(m) else AiText(vm, m, actions)
     }
 }
 
@@ -247,7 +255,7 @@ private fun UserBubble(m: Msg) {
 }
 
 @Composable
-private fun AiText(m: Msg) {
+private fun AiText(vm: MainVm, m: Msg, actions: Boolean) {
     Column(Modifier.fillMaxWidth().padding(end = 24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.hjtk_mark_ink), null, Modifier.size(14.dp)); Spacer(Modifier.width(6.dp))
@@ -255,7 +263,24 @@ private fun AiText(m: Msg) {
             Spacer(Modifier.width(8.dp)); Text(hm.format(Date(m.at)), style = T.label)
         }
         Spacer(Modifier.height(4.dp))
-        SelectionContainer { MdText(m.text) }   // 길게 눌러 원하는 부분만 복사
+        val shown = remember(m.text) { com.ht.hjtk.core.stream.AepView.clean(m.text) }   // 저장된 옛 메시지의 봉투도 걸러 낸다
+        SelectionContainer { MdText(shown) }   // 길게 눌러 원하는 부분만 복사
+        if (actions) AnswerActions(vm, shown)
+    }
+}
+
+/** 가장 최근 답에만: 복사 · 공유 · 다시 묻기 · 기억하기 (모든 답에 달면 화면이 시끄럽다) */
+@Composable
+private fun AnswerActions(vm: MainVm, text: String) {
+    val ctx = LocalContext.current
+    var done by remember(text) { mutableStateOf<String?>(null) }
+    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+        @Composable fun act(label: String, f: () -> Unit) = Text(if (done == label) "$label ✓" else label, style = T.small.copy(fontSize = 12.sp, color = if (done == label) C.Ink else C.Graphite, fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.clip(RoundedCornerShape(5.dp)).press({ f(); done = label }).padding(horizontal = 8.dp, vertical = 6.dp))
+        act("복사") { ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("HJTK", text)) }
+        act("공유") { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text), "답 공유").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        act("다시 묻기") { vm.retryLast() }
+        act("기억하기") { vm.remember(text) }
     }
 }
 

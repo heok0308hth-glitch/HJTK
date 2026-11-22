@@ -129,9 +129,51 @@
     }
     return 'LOADING';
   };
-  window.__hjtkLastAnswer = function () {
+  // 답 노드: 생각(THINK) 블록 안의 마크다운은 제외한다
+  function answers() {
     var n = document.querySelectorAll('.ds-markdown');
     if (!n.length) n = document.querySelectorAll('[class*="markdown"]');
-    return n.length ? (n[n.length - 1].innerText || '') : '';
+    return [].filter.call(n, function (x) { return !(x.closest && x.closest('[class*="think"]')); });
+  }
+  function boxLen() {
+    var b = document.querySelector('textarea'); if (b) return b.value.length;
+    var c = document.querySelector('[contenteditable="true"]'); return c ? (c.innerText || '').trim().length : -1;
+  }
+  window.__hjtkLastAnswer = function () { var n = answers(); return n.length ? (n[n.length - 1].innerText || '') : ''; };
+  window.__hjtkBox = boxLen;
+  /** 보내기 직전의 기준점: 답 개수와 마지막 답 꼬리. 이후 '새 답'만 인정한다(이전 답을 새 답으로 착각하지 않게) */
+  window.__hjtkMark = function () {
+    var n = answers();
+    return JSON.stringify({ n: n.length, last: n.length ? (n[n.length - 1].innerText || '').slice(-300) : '', box: boxLen() });
+  };
+  window.__hjtkNewAnswer = function (n0, last0) {
+    var n = answers(); if (!n.length) return '';
+    var t = n[n.length - 1].innerText || '';
+    if (n.length > n0) return t;
+    if (n.length === n0 && n0 > 0 && t.slice(-300) !== last0) return t;
+    return '';
+  };
+  /** 페이지 새로고침 없이 새 대화(SPA 버튼). 못 찾으면 NONE → 앱이 주소를 다시 연다 */
+  window.__hjtkNewChat = function () {
+    var re = /^(开启新对话|新对话|New chat|새 채팅|새로운 채팅|새 대화|開啟新對話)$/i;
+    var all = document.querySelectorAll('div,a,button,span');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i], t = (el.innerText || '').trim();
+      if (t.length < 20 && re.test(t)) { var r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0) { el.click(); return 'OK'; } }
+    }
+    return 'NONE';
+  };
+  /** 서버에 저장된 이 대화방 기록(사용자 본인 세션의 페이지 요청). 결과는 브리지 hist로 돌아온다 */
+  window.__hjtkHistory = function () {
+    try {
+      var m = location.pathname.match(/\/s\/([\w-]+)/); if (!m) { B.hist(''); return 'NOID'; }
+      var tok = ''; var raw = localStorage.getItem('userToken') || '';
+      try { var o = JSON.parse(raw); tok = (o && o.value) || ''; } catch (e) { tok = raw; }
+      var h = {}; if (tok) h.authorization = 'Bearer ' + tok;
+      of.call(window, '/api/v0/chat/history_messages?chat_session_id=' + encodeURIComponent(m[1]), { headers: h, credentials: 'include' })
+        .then(function (r) { return r.text(); }).then(function (t) { B.hist(t.slice(0, 800000)); })
+        .catch(function () { B.hist(''); });
+      return 'OK';
+    } catch (e) { try { B.hist(''); } catch (e2) {} return 'ERR'; }
   };
 })();

@@ -16,7 +16,7 @@ import kotlin.math.sqrt
 /** 기기·네트워크가 필요 없는 결정론 명령. JVM에서 단위 테스트된다. */
 object PureHandlers {
 
-    fun all(today: () -> LocalDate = { LocalDate.now() }): Map<String, CommandHandler> = base(today) + extra()
+    fun all(today: () -> LocalDate = { LocalDate.now() }): Map<String, CommandHandler> = base(today) + extra() + MoreCommands.handlers
 
     private fun extra(): Map<String, CommandHandler> = mapOf(
         "text.manuscript" to CommandHandler { c ->

@@ -103,6 +103,7 @@ fun SettingsScreen(vm: MainVm) {
                 Toggle(s.petEnabled) { vm.store.updateSettings { it.copy(petEnabled = !it.petEnabled) } }
             }
             if (s.petEnabled && !Perms.overlay(ctx)) InkButton("다른 앱 위에 표시 허용하기", Modifier.fillMaxWidth(), accent = true) { ctx.startActivity(Perms.overlayIntent(ctx)) }
+            NumRow(1, "펫 바꾸기", if (com.ht.hjtk.engine.PetPack.hasCustom(ctx)) "내가 가져온 펫 사용 중 · 동작별 줄 바꾸기" else "내 스프라이트 시트를 불러와 펫으로 · 자동으로 잘라요", onClick = { vm.go(Route.Pet) })
 
             SectionHead("04", "권한")
             var n = 1

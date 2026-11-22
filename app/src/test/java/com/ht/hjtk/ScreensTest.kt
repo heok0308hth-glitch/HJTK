@@ -86,5 +86,6 @@ class ScreensTest {
         vm.store.msg(c.id, Role.SYSTEM, "지난번 앱이 예기치 않게 종료됐어요. 같은 문제가 반복되면 아래 내용을 복사해 알려 주세요.\nIllegalStateException: example", "error", mapOf("via" to "CRASH", "detail" to "trace"))
         shot("14_errors") { HjtkApp(vm) }
     }
+    @Test fun s15_pet() { vm.go(Route.Pet); shot("15_pet") { HjtkApp(vm) } }
     @Test fun s12_cockpit() { vm.go(Route.Cockpit); shot("12_cockpit") { HjtkApp(vm) } }
 }

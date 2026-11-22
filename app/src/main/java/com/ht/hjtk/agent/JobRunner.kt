@@ -76,6 +76,8 @@ class JobRunner(private val h: Hjtk) {
     val pet = MutableSharedFlow<PetCue>(extraBufferCapacity = 16)
     val screenWaiting = MutableStateFlow<String?>(null)
     val busyQuick = MutableStateFlow<Set<String>>(emptySet())
+    /** 지금 DeepSeek 답이 실시간으로 흘러드는 대화(빠른 대화만). 작업 답(봉투)은 화면에 흘리지 않는다 */
+    val streamingConv = MutableStateFlow<String?>(null)
     private var screenDeferred: CompletableDeferred<String?>? = null
     private var pickDeferred: CompletableDeferred<String?>? = null
 
@@ -219,7 +221,7 @@ class JobRunner(private val h: Hjtk) {
         val conv = l.convId; val jid = l.jobId
         when (e) {
             is AgentEvent.Replied -> {
-                val say = e.turn.say.trim()
+                val say = com.ht.hjtk.core.stream.AepView.clean(e.turn.say).trim()
                 if (say.isNotEmpty() && say != l.lastSay && !e.turn.done) { l.lastSay = say; store.msg(conv, Role.AI, say, "text", mapOf("job" to jid, "via" to e.via, "step" to e.step.toString())) }
             }
             is AgentEvent.CmdEnd -> {
@@ -240,7 +242,7 @@ class JobRunner(private val h: Hjtk) {
                 if (!e.state.terminal) store.updateJob(jid) { it.copy(state = e.state.name, label = e.why) }
                 AgentService.update(h.app)
             }
-            is AgentEvent.Done -> store.msg(conv, Role.AI, e.final, "final", mapOf("job" to jid, "label" to e.label))
+            is AgentEvent.Done -> store.msg(conv, Role.AI, com.ht.hjtk.core.stream.AepView.clean(e.final), "final", mapOf("job" to jid, "label" to e.label))
             is AgentEvent.Approval -> pending.value.values.firstOrNull { it.approval?.call?.callId == e.call.callId && it.jobId == jid }?.let { p ->
                 store.updateMsg(conv, p.msgId) { m -> m.copy(meta = m.meta + ("status" to if (e.approved) "approved" else "rejected") + ("note" to e.note)) }
             }
@@ -396,12 +398,18 @@ class JobRunner(private val h: Hjtk) {
                 val conv = store.conversations.value.firstOrNull { it.id == convId }
                 val fresh = conv?.dsSession == null
                 if (base is DeepSeekWeb && !fresh) base.ensureSession(conv?.dsSession)
-                val rr = base.send(text, convId, 1, fresh)
+                streamingConv.value = convId
+                val rr = try { base.send(text, convId, 1, fresh) } finally { streamingConv.value = null }
                 if (base is DeepSeekWeb) base.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { u -> store.updateConversation(convId) { it.copy(dsSession = u) } }
                 rr
             }
         } ?: LlmReply("", "TIMEOUT", false, 0)
-        if (r.text.isNotBlank()) { store.msg(convId, Role.AI, r.text, "text", mapOf("via" to r.via)); return }
+        if (r.text.isNotBlank()) {
+            // 이 DeepSeek 대화방이 작업 형식(AEP)으로 답했다면 봉투를 벗겨 사람 말만 남긴다
+            val shown = com.ht.hjtk.core.stream.AepView.clean(r.text)
+            store.msg(convId, Role.AI, shown, "text", mapOf("via" to r.via) + (if (shown != r.text) mapOf("filtered" to "aep") else emptyMap()))
+            return
+        }
 
         // 로그인/확인이 필요하면: 조종석에서 끝내는 순간 같은 질문을 자동으로 이어 보낸다(최대 10분)
         if (waitForLogin && base is DeepSeekWeb && (r.via == "NEEDS_LOGIN" || r.via == "CHALLENGE")) {
