@@ -57,6 +57,7 @@ fun WorkScreen(vm: HjtkViewModel) {
     var tab by remember { mutableIntStateOf(0) }
     var expanded by remember { mutableStateOf<String?>(null) }
     var showBuilder by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Skill?>(null) }
     val pipelines = vm.pipelines()
     val skills = vm.skills()
 
@@ -96,11 +97,27 @@ fun WorkScreen(vm: HjtkViewModel) {
             }
         } else {
             items(skills, key = { it.id }) { s ->
-                SkillCard(s, onRun = { vm.runSkill(s) }, onDelete = { vm.deleteSkill(s.id) })
+                SkillCard(
+                    s = s,
+                    onRun = { vm.runSkill(s) },
+                    onDelete = { vm.deleteSkill(s.id) },
+                    onEdit = { editing = s }
+                )
                 HairlineDivider()
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+
+    editing?.let { skill ->
+        SkillEditDialog(
+            skill = skill,
+            onDismiss = { editing = null },
+            onSave = { name, keywords, description ->
+                vm.updateSkill(skill.copy(name = name, keywords = keywords, description = description))
+                editing = null
+            }
+        )
     }
 
     if (showBuilder) {
@@ -192,7 +209,7 @@ private fun PipelineCard(
 }
 
 @Composable
-private fun SkillCard(s: Skill, onRun: () -> Unit, onDelete: () -> Unit) {
+private fun SkillCard(s: Skill, onRun: () -> Unit, onDelete: () -> Unit, onEdit: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(horizontal = 20.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -218,6 +235,7 @@ private fun SkillCard(s: Skill, onRun: () -> Unit, onDelete: () -> Unit) {
                 }
                 if (!s.builtIn) {
                     Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(onClick = onEdit) { Text("편집", style = MaterialTheme.typography.labelSmall, color = Hjtk.palette.accent) }
                         TextButton(onClick = onDelete) { Text("삭제", style = MaterialTheme.typography.labelSmall, color = Hjtk.palette.danger) }
                     }
                 }
@@ -286,6 +304,53 @@ private fun PipelineBuilderDialog(
                         if (name.isNotBlank() && chosen.isNotEmpty()) onCreate(name, description, chosen.toList())
                     },
                     enabled = name.isNotBlank() && chosen.isNotEmpty()
+                ) { Text("저장", color = Hjtk.palette.accent) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkillEditDialog(
+    skill: Skill,
+    onDismiss: () -> Unit,
+    onSave: (String, List<String>, String) -> Unit
+) {
+    var name by remember { mutableStateOf(skill.name) }
+    var keywords by remember { mutableStateOf(skill.keywords.joinToString(", ")) }
+    var description by remember { mutableStateOf(skill.description) }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().background(Hjtk.palette.surface, RoundedCornerShape(20.dp)).padding(18.dp)) {
+            Text("스킬 편집", style = MaterialTheme.typography.titleLarge, color = Hjtk.palette.ink)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = name, onValueChange = { name = it }, label = { Text("이름") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Hjtk.palette.accent, unfocusedBorderColor = Hjtk.palette.line)
+            )
+            OutlinedTextField(
+                value = keywords, onValueChange = { keywords = it }, label = { Text("호출 키워드(쉼표)") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Hjtk.palette.accent, unfocusedBorderColor = Hjtk.palette.line)
+            )
+            OutlinedTextField(
+                value = description, onValueChange = { description = it }, label = { Text("설명") },
+                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Hjtk.palette.accent, unfocusedBorderColor = Hjtk.palette.line)
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text("취소", color = Hjtk.palette.inkSoft) }
+                TextButton(
+                    onClick = {
+                        if (name.isNotBlank()) {
+                            onSave(
+                                name.trim(),
+                                keywords.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                                description.trim()
+                            )
+                        }
+                    }
                 ) { Text("저장", color = Hjtk.palette.accent) }
             }
         }

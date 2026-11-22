@@ -88,6 +88,7 @@ class Engine private constructor(context: Context) {
     )
 
     private val tts = TtsSpeaker(appContext)
+    private var approvalWatch: ApprovalNotifier? = null
 
     val ports: HostPorts
 
@@ -124,6 +125,7 @@ class Engine private constructor(context: Context) {
         )
         orchestrator.attachPorts(ports)
         orchestrator.restoreConversation()
+        approvalWatch = ApprovalNotifier(appContext, orchestrator)
     }
 
     fun diagnosticsForUi(): String = diagnostics()

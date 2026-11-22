@@ -52,10 +52,16 @@ private val TABS = listOf(
 fun MainScreen(
     vm: HjtkViewModel,
     startTab: Int = 0,
+    requestedTab: Int? = null,
     headerExtra: (@Composable () -> Unit)? = null,
     developerSlot: (@Composable () -> Unit)? = null
 ) {
     var tab by remember(startTab) { mutableIntStateOf(startTab.coerceIn(0, TABS.lastIndex)) }
+    // A settings deep link that arrives while the app is already open must still
+    // switch tabs, so the request is observed rather than only used as the start.
+    androidx.compose.runtime.LaunchedEffect(requestedTab) {
+        if (requestedTab != null) tab = requestedTab.coerceIn(0, TABS.lastIndex)
+    }
     var palette by remember { mutableStateOf(false) }
     var sessions by remember { mutableStateOf(false) }
 

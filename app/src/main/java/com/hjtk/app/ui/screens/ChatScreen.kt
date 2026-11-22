@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -107,17 +106,6 @@ fun ChatScreen(
                     )
                     is ChatItem.ReportCard -> ReportCardView(item.report)
                     is ChatItem.NoticeCard -> NoticeCardView(item.title, item.body, item.tone)
-                }
-            }
-            if (state.busy) {
-                item {
-                    state.jobs.filter { !it.queued }.forEach { job ->
-                        WorkingRow(
-                            job.plan.titleKo + " · " + (job.activeStep?.titleKo ?: "준비 중"),
-                            job.doneSteps,
-                            job.totalSteps
-                        )
-                    }
                 }
             }
         }
@@ -232,23 +220,6 @@ private fun AssistantBlock(text: String, actions: List<com.hjtk.app.core.model.R
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun WorkingRow(label: String, done: Int, total: Int) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(14.dp),
-            strokeWidth = 2.dp,
-            color = Hjtk.palette.accent
-        )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            "$label" + if (total > 0) "  ($done/$total)" else "",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Hjtk.palette.inkSoft
-        )
     }
 }
 

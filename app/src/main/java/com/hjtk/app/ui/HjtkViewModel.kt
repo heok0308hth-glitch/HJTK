@@ -65,6 +65,7 @@ class HjtkViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun deletePipeline(id: String) = engine.pipelines.delete(id)
     fun deleteSkill(id: String) = engine.skills.delete(id)
+    fun updateSkill(skill: Skill) = engine.skills.upsert(skill)
 
     fun settingsState(): StateFlow<com.hjtk.app.android.prefs.Settings.Snapshot> = engine.settings.state
     fun diagnostics(): String = engine.diagnosticsForUi()

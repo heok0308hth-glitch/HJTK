@@ -244,6 +244,28 @@ fun SettingsScreen(
         )
         HairlineDivider()
         ListRow(
+            title = "스킬 JSON 내보내기",
+            subtitle = "사용자 정의 스킬 ${vm.engine.skills.userDefined().size}개",
+            onClick = {
+                vm.runCommand(
+                    "file.export_text",
+                    mapOf("content" to vm.engine.skills.exportJson(), "name" to "skills.json")
+                )
+            }
+        )
+        HairlineDivider()
+        ListRow(
+            title = "파이프라인 JSON 내보내기",
+            subtitle = "전체 ${vm.pipelines().size}개",
+            onClick = {
+                vm.runCommand(
+                    "file.export_text",
+                    mapOf("content" to vm.engine.pipelines.exportJson(), "name" to "pipelines.json")
+                )
+            }
+        )
+        HairlineDivider()
+        ListRow(
             title = "시크릿 삭제",
             subtitle = "저장된 API 키와 메일 비밀번호를 모두 지웁니다",
             onClick = {
