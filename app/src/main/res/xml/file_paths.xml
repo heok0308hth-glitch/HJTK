@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Exports live under the app's external files dir; nothing else is shared. -->
+    <external-files-path name="exports" path="exports/" />
+    <external-files-path name="root" path="." />
+</paths>
