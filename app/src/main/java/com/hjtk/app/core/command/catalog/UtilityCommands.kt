@@ -350,13 +350,23 @@ object UtilityCommands {
                         .getOrElse { failure(it) }
                 }
                 HubKind.COMMAND -> {
-                    if (!reg.exists(entry.target)) CommandResult.Failed("허브의 명령 ‘${entry.target}’이(가) 사라졌습니다.")
-                    else {
+                    if (!reg.exists(entry.target)) {
+                        CommandResult.Failed("허브의 명령 ‘${entry.target}’이(가) 사라졌습니다.")
+                    } else {
                         val spec = reg.spec(entry.target)!!
                         val miss = reg.missingArg(com.hjtk.app.core.model.CommandRequest(entry.target), spec)
-                        if (miss != null) CommandResult.NeedInput(miss.param, miss.prompt) else {
-                            // The chat layer executes hub commands directly through the orchestrator.
-                            CommandResult.Ok("명령 ‘${spec.labelKo}’을(를) 실행합니다.", data = mapOf("runCommand" to entry.target))
+                        if (miss != null) {
+                            CommandResult.NeedInput(miss.param, miss.prompt)
+                        } else {
+                            // A hub shortcut must actually run the command: hand it to
+                            // the plan gateway, which applies the usual approval rules.
+                            runCatching {
+                                ports.plans.submit(
+                                    listOf(com.hjtk.app.core.model.SkillStep(entry.target)),
+                                    spec.labelKo
+                                )
+                            }.map { CommandResult.Ok("‘${spec.labelKo}’ 명령을 실행합니다.") }
+                                .getOrElse { failure(it) }
                         }
                     }
                 }

@@ -127,6 +127,16 @@ class CommandSmokeTest {
     }
 
     @Test
+    fun hubCommandShortcutRunsTheCommand() {
+        val entry = w.hub.add(com.hjtk.app.core.model.HubKind.COMMAND, "배터리 확인", "device.battery")
+        val result = run(w.registry.spec("hub.open")!!, mapOf("label" to entry.label))
+        assertTrue(result is CommandResult.Ok, "$result")
+        awaitUntil(5_000, "허브 명령이 계획으로 제출되지 않았습니다") {
+            w.journal.records().any { it.kind == "plan_started" && it.detail.contains("배터리") }
+        }
+    }
+
+    @Test
     fun approvalGateIsNotNeededForReadCommands() {
         val spec = w.registry.spec("device.battery")!!
         assertTrue(!spec.effect.needsApproval)

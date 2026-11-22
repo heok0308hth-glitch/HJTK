@@ -1,6 +1,7 @@
 package com.hjtk.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -92,9 +93,12 @@ fun ChatScreen(
             items(state.items, key = { it.id }) { item ->
                 when (item) {
                     is ChatItem.UserText -> UserBubble(item.text)
-                    is ChatItem.AssistantText -> AssistantBlock(item.text, item.actions, onAction = { cmd, args ->
-                        vm.runCommand(cmd, args)
-                    })
+                    is ChatItem.AssistantText -> AssistantBlock(
+                        text = item.text,
+                        actions = item.actions,
+                        onAction = { cmd, args -> vm.runCommand(cmd, args) },
+                        onCopy = { vm.runCommand("clip.copy", mapOf("text" to item.text)) }
+                    )
                     is ChatItem.PlanCard -> {
                         val job = state.job(item.plan.id)
                         PlanCardView(item.plan, job?.doneSteps ?: 0, job?.state ?: PlanState.DRAFT)
@@ -202,10 +206,16 @@ private fun UserBubble(text: String) {
 }
 
 @Composable
-private fun AssistantBlock(text: String, actions: List<com.hjtk.app.core.model.ResultAction>, onAction: (String, Map<String, String>) -> Unit) {
+private fun AssistantBlock(
+    text: String,
+    actions: List<com.hjtk.app.core.model.ResultAction>,
+    onAction: (String, Map<String, String>) -> Unit,
+    onCopy: () -> Unit
+) {
     Column(Modifier.fillMaxWidth()) {
         Box(
             Modifier
+                .combinedClickableCompat(onLongClick = onCopy)
                 .background(Hjtk.palette.surface, RoundedCornerShape(topStart = 6.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
                 .border(1.dp, Hjtk.palette.line, RoundedCornerShape(topStart = 6.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
                 .padding(horizontal = 14.dp, vertical = 12.dp)
@@ -325,3 +335,12 @@ fun Composer(
         }
     }
 }
+
+
+/** Long press copies; there is no ripple on a long press so nothing flickers. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun Modifier.combinedClickableCompat(onLongClick: () -> Unit): Modifier =
+    this.combinedClickable(
+        onClick = {},
+        onLongClick = onLongClick
+    )
