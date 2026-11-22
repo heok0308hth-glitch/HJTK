@@ -212,7 +212,7 @@ The test suite covers, among others:
 | RRE | incremental, cumulative, overlapping and conflicting streams |
 | Concurrency | three plans overlap, a fourth queues, cancelling one leaves the others intact, same-resource steps serialise |
 | Android runtime (Robolectric) | engine composition root builds, secrets round-trip, files are written inside app storage, notifications work |
-| UI (Compose + Robolectric) | every tab opens its own screen, the command palette opens and filters, a typed request reaches the store end to end, an approval card can be cancelled, an unknown request starts no plan |
+| UI (Compose + Robolectric) | the Activity starts and reaches RESUMED; every tab opens its own screen, the command palette opens and filters, a typed request reaches the store end to end, an approval card can be cancelled, an unknown request starts no plan |
 | Recovery | a plan interrupted by process death is archived and resumed from its checkpoint; a torn journal line is truncated and the chain continues |
 
 ---
