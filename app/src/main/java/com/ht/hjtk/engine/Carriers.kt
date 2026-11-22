@@ -67,6 +67,23 @@ object RelayInbox {
     data class Item(val text: String, val source: String, val at: Long = System.currentTimeMillis())
     val flow = MutableSharedFlow<Item>(extraBufferCapacity = 16)
     fun submit(text: String, source: String) { if (text.isNotBlank()) flow.tryEmit(Item(text, source)) }
+
+    /** 다른 AI에게 보낸 질문(답을 기다리는 중일 때만 값이 있다) */
+    @Volatile var awaiting: String? = null
+    @Volatile private var lastClip: String? = null
+
+    /**
+     * 사용자가 Gemini 답을 '복사'하고 HJTK로 돌아오면 그걸 답으로 받는다(공유 단계 없이).
+     * 안드로이드 10+는 앱이 포커스를 가진 순간에만 클립보드를 읽을 수 있어 onWindowFocusChanged에서 부른다.
+     */
+    fun captureClipboard(ctx: Context) {
+        val q = awaiting ?: return
+        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java) ?: return
+        val t = runCatching { cm.primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString() }.getOrNull()?.trim() ?: return
+        if (t.length < 2 || t == q.trim() || t == lastClip) return
+        lastClip = t
+        submit(t, "L7_CLIPBOARD")
+    }
 }
 
 /** L1 — 선택 경로. 키가 있을 때만 존재한다. */
@@ -125,7 +142,8 @@ class ExternalAiBridge(private val ctx: Context, private val launcher: Launcher)
             type = "text/plain"; putExtra(Intent.EXTRA_TEXT, prompt); setPackage(t.pkg); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         } else Intent(Intent.ACTION_VIEW, Uri.parse(t.webUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (t.pkg != null) A11yBridge.arm(t.pkg, prompt)
-        launcher.launch(intent, "${t.name}에게 보내기", "${t.name}에 질문을 넣었어요(클립보드에도 복사). 답이 나오면 '공유 → HJTK' 또는 복사해 주세요.", customTab = useWeb || !installed(t))
+        RelayInbox.awaiting = prompt
+        launcher.launch(intent, "${t.name}에게 보내기", "${t.name}에 질문을 넣었어요(클립보드에도 복사). 답이 나오면 '복사'하고 HJTK로 돌아오세요 — 자동으로 받아요.", customTab = useWeb || !installed(t))
         val got = withTimeoutOrNull(waitMs) {
             kotlinx.coroutines.flow.merge(
                 RelayInbox.flow,
@@ -133,6 +151,7 @@ class ExternalAiBridge(private val ctx: Context, private val launcher: Launcher)
             ).first()
         }
         A11yBridge.disarm()
+        RelayInbox.awaiting = null
         return if (got == null) LlmReply("", "TIMEOUT", false, System.currentTimeMillis() - t0)
         else LlmReply(got.text, got.source, true, System.currentTimeMillis() - t0)
     }

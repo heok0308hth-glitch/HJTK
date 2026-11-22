@@ -87,5 +87,20 @@ class ScreensTest {
         shot("14_errors") { HjtkApp(vm) }
     }
     @Test fun s15_pet() { vm.go(Route.Pet); shot("15_pet") { HjtkApp(vm) } }
+    @Test fun s16_foundry() {
+        val c = vm.store.newConversation("전시회 추천"); vm.convId.value = c.id
+        val st = vm.store
+        st.msg(c.id, Role.USER, "이번 주 서울 전시회 3개 추천하고 일정에 넣어줘", meta = mapOf("mission" to "true"))
+        st.msg(c.id, Role.SYSTEM, "작업을 맡았어요 · 작가 DeepSeek · 검토 DeepSeek 검토창", "note")
+        st.msg(c.id, Role.SYSTEM, "A 정석 — 전시 포털 검색 후 일정 확인 (4단계)\nB 결합 — 큐레이터 리뷰 + 동선 최적화 (5단계)\nC 전복 — 내 빈 시간부터 역산 (4단계)", "collab", mapOf("role" to "구상", "who" to "DeepSeek"))
+        st.msg(c.id, Role.SYSTEM, "C 전복 채택 — 빈 시간을 먼저 보니 실제로 갈 수 있는 전시만 남는다\n점수 A 정 6.8 · B 결 7.1 · C 전 8.2\n보완: 휴관일 확인", "collab", mapOf("role" to "선택", "who" to "DeepSeek 검토창"))
+        st.msg(c.id, Role.SYSTEM, "이번 주 빈 시간", "cmd", mapOf("cmd" to "cal.free", "ok" to "true", "ms" to "420", "args" to "days=7"))
+        st.msg(c.id, Role.SYSTEM, "전시 검색", "cmd", mapOf("cmd" to "web.search", "ok" to "true", "ms" to "1830", "args" to "q=서울 전시 이번주"))
+        st.msg(c.id, Role.SYSTEM, "고칠 점 1개 (6.5/10)\n· 국립현대미술관 월요일 휴관인데 월요일에 배치함", "collab", mapOf("role" to "검증", "who" to "DeepSeek 검토창"))
+        st.msg(c.id, Role.SYSTEM, "검토 의견 1개 반영 · 1,420자", "collab", mapOf("role" to "수정", "who" to "DeepSeek"))
+        st.putJob(JobRec("FDRY01", c.id, "이번 주 서울 전시회 3개 추천하고 일정에 넣어줘", "RUNNING", System.currentTimeMillis() - 300_000, System.currentTimeMillis(),
+            0.82, "약 1~2분", "결과물 검증", "검토 의견 반영(1회)", "[]", "P0_STREAM", "", "검증", 0, 2))
+        shot("16_foundry") { HjtkApp(vm) }
+    }
     @Test fun s12_cockpit() { vm.go(Route.Cockpit); shot("12_cockpit") { HjtkApp(vm) } }
 }

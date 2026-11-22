@@ -84,13 +84,15 @@ data class Settings(
     val homeCity: String = "서울",
     val defaultMission: Boolean = false,
     val onboarded: Boolean = false,
-    val geminiWaitMin: Int = 10
+    val geminiWaitMin: Int = 10,
+    /** 작업 공정의 검토 AI: auto(키 있으면 Gemini, 없으면 DeepSeek 두 번째 창) · gemini · gemini_app(1탭) · deepseek2 · off */
+    val collab: String = "auto"
 ) {
     fun toJson(): JSONObject = JSONObject().put("dsMode", dsMode).put("gMode", geminiMode).put("dsModel", dsModel).put("gModel", geminiModel).put("pet", petEnabled)
-        .put("rep", reportMinutes).put("autoE2", autoAllowE2).put("name", userName).put("city", homeCity).put("defM", defaultMission).put("onb", onboarded).put("gw", geminiWaitMin)
+        .put("rep", reportMinutes).put("autoE2", autoAllowE2).put("name", userName).put("city", homeCity).put("defM", defaultMission).put("onb", onboarded).put("gw", geminiWaitMin).put("collab", collab)
     companion object {
         fun from(o: JSONObject) = Settings(o.optString("dsMode", "web"), o.optString("gMode", "app"), o.optString("dsModel", "deepseek-flash"), o.optString("gModel", "gemini-3.8-flash"),
-            o.optBoolean("pet", true), o.optInt("rep", 5), o.optBoolean("autoE2"), o.optString("name"), o.optString("city", "서울"), o.optBoolean("defM"), o.optBoolean("onb"), o.optInt("gw", 10))
+            o.optBoolean("pet", true), o.optInt("rep", 5), o.optBoolean("autoE2"), o.optString("name"), o.optString("city", "서울"), o.optBoolean("defM"), o.optBoolean("onb"), o.optInt("gw", 10), o.optString("collab", "auto"))
     }
 }
 

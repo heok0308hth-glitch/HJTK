@@ -42,14 +42,14 @@ class AgentLoop(
     private val clock: () -> Long = System::currentTimeMillis,
     private val config: LoopConfig = LoopConfig(),
     private val resumeFrom: String? = null
-) {
+) : MissionEngine {
     private val turnDurations = ArrayList<Long>()
-    var plan: List<PlanStep> = emptyList(); private set
-    var next: String = ""; private set
-    var progress: Double? = null; private set
-    val durations: List<Long> get() = turnDurations
+    override var plan: List<PlanStep> = emptyList(); private set
+    override var next: String = ""; private set
+    override var progress: Double? = null; private set
+    override val durations: List<Long> get() = turnDurations
 
-    suspend fun run(): LoopOutcome {
+    override suspend fun run(): LoopOutcome {
         emit(AgentEvent.Started(clock(), ctx.goal, llm.name))
         emit(AgentEvent.State(clock(), JobState.RUNNING, "시작"))
         var step = 1

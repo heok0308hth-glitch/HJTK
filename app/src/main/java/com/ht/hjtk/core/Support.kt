@@ -257,6 +257,8 @@ object InputRouter {
             val spec = CommandCatalog.find(head)
             if (spec != null) return Route.Direct(CommandCall("u1", spec.id, parseArgs(spec.id, t.substringAfter(' ', ""))))
         }
+        // @제미나이·@함께는 대화형 협업 — 작업으로 분류하지 않는다
+        if (t.startsWith("@")) return Route.Quick(t)
         return when (forceMission) {
             true -> Route.Mission(t)
             false -> Route.Quick(t)

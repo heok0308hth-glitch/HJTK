@@ -76,6 +76,14 @@ fun SettingsScreen(vm: MainVm) {
                 dot = if (ds == DeepSeekWeb.Status.READY) C.Ink else C.Red, onClick = { vm.go(Route.Cockpit) })
             Hairline()
             NumRow(2, "DeepSeek 로그아웃", "쿠키·저장소를 지웁니다", onClick = { vm.h.deepseek.logout() })
+            Spacer(Modifier.height(14.dp)); Label("작업 공정 · 검토 AI(AI끼리 협업)")
+            Segmented(listOf("auto" to "자동", "gemini" to "Gemini", "deepseek2" to "DeepSeek 2창", "off" to "끄기"), s.collab) { m -> vm.store.updateSettings { it.copy(collab = m) } }
+            Text(when (s.collab) {
+                "auto" -> "Gemini API 키가 있으면 Gemini가, 없으면 DeepSeek의 두 번째 대화방이 계획을 고르고 결과물을 검증해요. 사람 손이 들지 않아요."
+                "gemini" -> if (vm.h.gemini.available()) "Gemini(API 키)가 검토합니다." else "키가 없어서 Gemini 앱으로 보내요. 답을 복사하고 돌아오면 자동으로 받아요(작업당 최대 2번)."
+                "deepseek2" -> "DeepSeek을 별도 대화방에서 '검토자'로 씁니다. 작성자와 맥락이 섞이지 않아요."
+                else -> "검토 없이 작성자 혼자 진행합니다(빠르지만 품질 확인이 약해요)."
+            }, style = T.small.copy(fontSize = 12.5.sp), modifier = Modifier.padding(top = 6.dp))
             Spacer(Modifier.height(14.dp)); Label("Gemini · 검토자(교차 검증)")
             Spacer(Modifier.height(6.dp))
             Segmented(listOf("app" to "Gemini 앱", "web" to "웹(브라우저)", "api" to "API 키"), s.geminiMode) { m -> vm.store.updateSettings { it.copy(geminiMode = m) } }

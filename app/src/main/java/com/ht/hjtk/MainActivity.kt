@@ -29,6 +29,12 @@ class MainActivity : ComponentActivity() {
         Hjtk.get(this).deepseek.dock(findViewById(android.R.id.content))
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Gemini 답을 복사하고 돌아왔다면 자동으로 받는다
+        if (hasFocus) com.ht.hjtk.engine.RelayInbox.captureClipboard(this)
+    }
+
     override fun onStop() {
         // 액티비티 창에서 떼어 낸다(누수 방지). 진행 중인 답은 투명 창 또는 창 없는 상태에서 계속 받는다.
         Hjtk.get(this).deepseek.undock()

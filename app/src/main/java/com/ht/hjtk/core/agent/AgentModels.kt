@@ -76,4 +76,6 @@ sealed interface AgentEvent {
     data class State(override val at: Long, val state: JobState, val why: String) : AgentEvent
     data class Artifact(override val at: Long, val name: String) : AgentEvent
     data class Done(override val at: Long, val final: String, val label: String) : AgentEvent
+    /** AI끼리 협업한 기록: 역할(구상·선택·검증·수정·대체) · 누가 · 무엇을 */
+    data class Collab(override val at: Long, val role: String, val who: String, val text: String) : AgentEvent
 }

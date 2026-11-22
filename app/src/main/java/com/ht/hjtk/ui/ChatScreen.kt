@@ -238,6 +238,7 @@ fun MessageView(vm: MainVm, m: Msg, actions: Boolean = false) {
             Box(Modifier.width(14.dp).height(1.dp).background(C.Hair)); Spacer(Modifier.width(8.dp)); Text(m.text, style = T.small.copy(fontSize = 12.sp, color = C.Mute))
         }
         "error" -> ErrorRow(vm, m)
+        "collab" -> CollabRow(m)
         else -> if (m.role == Role.USER) UserBubble(m) else AiText(vm, m, actions)
     }
 }
@@ -259,13 +260,35 @@ private fun AiText(vm: MainVm, m: Msg, actions: Boolean) {
     Column(Modifier.fillMaxWidth().padding(end = 24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.hjtk_mark_ink), null, Modifier.size(14.dp)); Spacer(Modifier.width(6.dp))
-            Label(listOfNotNull("DeepSeek", m.meta["via"]?.takeIf { it.isNotBlank() }, m.meta["step"]?.let { "#$it" }).joinToString(" · "))
+            Label(listOfNotNull(m.meta["who"] ?: "DeepSeek", m.meta["via"]?.takeIf { it.isNotBlank() }, m.meta["step"]?.let { "#$it" }).joinToString(" · "))
             Spacer(Modifier.width(8.dp)); Text(hm.format(Date(m.at)), style = T.label)
         }
         Spacer(Modifier.height(4.dp))
         val shown = remember(m.text) { com.ht.hjtk.core.stream.AepView.clean(m.text) }   // 저장된 옛 메시지의 봉투도 걸러 낸다
         SelectionContainer { MdText(shown) }   // 길게 눌러 원하는 부분만 복사
         if (actions) AnswerActions(vm, shown)
+    }
+}
+
+/**
+ * AI끼리 협업한 기록 한 줄. 역할마다 왼쪽 표지: 작성 쪽(구상·초안·수정)은 먹색, 검토 쪽(선택·검토·검증)은 주홍.
+ * 접힌 상태로 두 줄만, 누르면 펼친다.
+ */
+@Composable
+private fun CollabRow(m: Msg) {
+    val role = m.meta["role"].orEmpty(); val who = m.meta["who"].orEmpty()
+    val reviewer = role in setOf("선택", "검토", "검증")
+    var open by remember(m.id) { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().press({ open = !open }).padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
+        Box(Modifier.padding(top = 3.dp).width(3.dp).height(if (open) 40.dp else 30.dp).background(if (reviewer) C.Red else C.Ink))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(role, style = T.small.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = if (reviewer) C.Red else C.Ink))
+                Spacer(Modifier.width(6.dp)); Label(who)
+            }
+            Text(m.text, style = T.small.copy(fontSize = 12.5.sp, color = C.Graphite), maxLines = if (open) 30 else 2, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -538,11 +561,22 @@ private fun Composer(vm: MainVm, ime: Boolean) {
     val text by vm.draft.collectAsState()
     val mode by vm.mode.collectAsState()
     val slash = text.startsWith("/") && !text.contains(' ')
+    val at = text.startsWith("@") && !text.contains(' ')
     val suggestions = remember(text) { if (slash) CommandCatalog.search(text.drop(1)).take(if (ime) 3 else 5) else emptyList() }
     val customs by vm.store.customs.collectAsState()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     Column(Modifier.fillMaxWidth().background(C.Paper).navigationBarsPadding()) {
         Hairline()
+        if (at) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                listOf("@제미나이" to "Gemini에게 직접 묻기", "@함께" to "DeepSeek 초안 → 다른 AI 검토 → 종합 답").forEach { (k, d) ->
+                    Row(Modifier.fillMaxWidth().press({ vm.draft.value = "$k " }).padding(vertical = 7.dp)) {
+                        Text(k, style = T.mono.copy(fontWeight = FontWeight.Bold, color = C.Red), modifier = Modifier.width(110.dp)); Text(d, style = T.small, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            Hairline()
+        }
         if (suggestions.isNotEmpty() || slash) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
                 customs.filter { it.trigger.startsWith(text) }.take(2).forEach { c ->

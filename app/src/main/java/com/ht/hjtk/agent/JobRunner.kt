@@ -17,6 +17,7 @@ import com.ht.hjtk.data.Role
 import com.ht.hjtk.engine.A11yBridge
 import com.ht.hjtk.engine.CrashLog
 import com.ht.hjtk.engine.DeepSeekWeb
+import com.ht.hjtk.engine.ExternalAiBridge
 import com.ht.hjtk.engine.Notifier
 import com.ht.hjtk.engine.openCustomTab
 import com.ht.hjtk.service.AgentService
@@ -59,7 +60,7 @@ class JobRunner(private val h: Hjtk) {
 
     inner class Live(val jobId: String, val convId: String, val control: JobControl, val budget: TapBudget) {
         val events = ArrayList<AgentEvent>()
-        var loop: AgentLoop? = null
+        var loop: MissionEngine? = null
         var task: Job? = null
         val composer = ReportComposer(store.settings.value.reportMinutes * 60_000L)
         var startedAt = System.currentTimeMillis()
@@ -98,8 +99,13 @@ class JobRunner(private val h: Hjtk) {
     }
 
     /** 작업마다 DeepSeek 대화방이 따로 있다. 보내기 전에 그 방으로 돌아간다. */
-    private inner class JobLlm(private val jobId: String, private val base: LlmPort) : LlmPort {
-        override val name = base.name
+    /** 검토 AI가 DeepSeek 두 번째 창일 때 그 대화방 주소(작업별) */
+    private val criticSessions = ConcurrentHashMap<String, String>()
+
+    private inner class JobLlm(private val jobId: String, private val base: LlmPort, private val critic: Boolean = false) : LlmPort {
+        override val name = if (critic) "${base.name} 검토창" else base.name
+        private fun session(): String? = if (critic) criticSessions[jobId] else store.job(jobId)?.dsSession
+        private fun remember(u: String) { if (critic) criticSessions[jobId] = u else store.updateJob(jobId) { it.copy(dsSession = u) } }
         override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply {
             var r = once(text, jobId, step, newSession)
             // 로그인/확인 필요: 조종석에서 끝내면 같은 단계를 자동으로 이어 보낸다(최대 10분). 사람에게 '붙여넣기'를 요구하지 않는다.
@@ -124,11 +130,12 @@ class JobRunner(private val h: Hjtk) {
         }
 
         private suspend fun once(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply = llmLock.withLock {
-            if (base is DeepSeekWeb && !newSession) base.ensureSession(store.job(this.jobId)?.dsSession)
-            store.updateJob(this.jobId) { it.copy(lastPrompt = text.take(20_000)) }
-            val r = base.send(text, jobId, step, newSession)
+            val fresh = newSession || (base is DeepSeekWeb && session() == null)
+            if (base is DeepSeekWeb && !fresh) base.ensureSession(session())
+            if (!critic) store.updateJob(this.jobId) { it.copy(lastPrompt = text.take(20_000)) }
+            val r = base.send(text, jobId, step, fresh)
             // currentUrl()은 메인 스레드에서 기록한 사본이라 어느 스레드에서 읽어도 안전하다
-            if (base is DeepSeekWeb) base.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { u -> store.updateJob(this.jobId) { it.copy(dsSession = u) } }
+            if (base is DeepSeekWeb) base.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { remember(it) }
             store.updateJob(this.jobId) { it.copy(via = r.via) }
             r
         }
@@ -173,6 +180,37 @@ class JobRunner(private val h: Hjtk) {
         launchLoop(store.job(jobId)!!, resumeFrom = prompt, skillName = null)
     }
 
+    /** Gemini를 검토자로: API 키가 있으면 바로 */
+    private inner class GeminiApiPort : LlmPort {
+        override val name = "Gemini"
+        override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply {
+            val t0 = System.currentTimeMillis()
+            val a = runCatching { h.gemini.ask(text) }.getOrNull()
+            return LlmReply(a.orEmpty(), if (a.isNullOrBlank()) "GEMINI_FAIL" else "GEMINI_API", !a.isNullOrBlank(), System.currentTimeMillis() - t0)
+        }
+    }
+
+    /** Gemini 앱(키 없음): 작업당 최대 2번만 사람을 부른다. 다 쓰면 null → 공정이 DeepSeek 자체 검토로 넘긴다 */
+    private inner class GeminiRelayPort(private val budget: TapBudget) : LlmPort {
+        override val name = "Gemini 앱"
+        override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply {
+            if (budget.left <= 0) return LlmReply("", "BUDGET", false, 0)
+            budget.left--
+            val s = store.settings.value
+            return h.bridge.ask(ExternalAiBridge.GEMINI, text, useWeb = s.geminiMode == "web", waitMs = s.geminiWaitMin * 60_000L, jobTag = jobId)
+        }
+    }
+
+    private fun criticFor(jobId: String, budget: TapBudget): LlmPort? = when (store.settings.value.collab) {
+        "off" -> null
+        "gemini" -> if (h.gemini.available()) GeminiApiPort() else GeminiRelayPort(budget)
+        "gemini_app" -> GeminiRelayPort(budget)
+        "deepseek2" -> JobLlm(jobId, port(), critic = true)
+        else -> if (h.gemini.available()) GeminiApiPort() else JobLlm(jobId, port(), critic = true)
+    }
+
+    private fun checkpointFile(jobId: String) = java.io.File(store.jobDir(jobId), "foundry.json")
+
     private fun launchLoop(job: JobRec, resumeFrom: String?, skillName: String?) {
         val l = Live(job.id, job.convId, JobControl(), TapBudget(2))
         l.journal = Journal { line -> runCatching { store.journalFile(job.id).appendText(line + "\n") } }
@@ -190,10 +228,16 @@ class JobRunner(private val h: Hjtk) {
             skills = skills.map { it.name }, activeSkillGuide = active?.guide, userName = s.userName.ifBlank { null } ?.let { "$it · 사는 곳 ${s.homeCity}" }
         )
         val tools = AndroidTools(h, job.id, job.convId, human, l.budget)
-        val loop = AgentLoop(ctx, JobLlm(job.id, port()), tools, human, gate, l.control, { e -> onEvent(l, e) },
+        // 새 작업은 '작업 공정'으로. 1.1 이전 형식으로 멈춘 작업만 옛 루프로 이어 간다.
+        val cp = checkpointFile(job.id)
+        val legacy = resumeFrom != null && !cp.exists()
+        val loop: MissionEngine = if (legacy) AgentLoop(ctx, JobLlm(job.id, port()), tools, human, gate, l.control, { e -> onEvent(l, e) },
             config = LoopConfig(autoAllowE2 = s.autoAllowE2), resumeFrom = resumeFrom)
+        else Foundry(ctx, JobLlm(job.id, port()), criticFor(job.id, l.budget), tools, human, gate, l.control, { e -> onEvent(l, e) },
+            autoAllowE2 = s.autoAllowE2, checkpoint = { json -> runCatching { cp.writeText(json) } }, resume = if (resumeFrom != null) runCatching { cp.readText() }.getOrNull() else null)
         l.loop = loop
-        store.msg(job.convId, Role.SYSTEM, "작업을 맡았어요 · ${port().name}" + (active?.let { " · 스킬 '${it.name}'" } ?: ""), "note", mapOf("job" to job.id))
+        val crit = (loop as? Foundry)?.let { criticFor(job.id, TapBudget(0))?.name }
+        store.msg(job.convId, Role.SYSTEM, "작업을 맡았어요 · 작가 ${port().name}" + (crit?.let { " · 검토 $it" } ?: "") + (active?.let { " · 스킬 '${it.name}'" } ?: ""), "note", mapOf("job" to job.id))
         l.task = scope.launch {
             val out = runCatching { loop.run() }.getOrElse { LoopOutcome(JobState.FAILED, "오류: ${it.message}", 0, "오류") }
             store.updateJob(job.id) { it.copy(state = out.state.name, final = out.final, label = out.label, progress = if (out.state == JobState.COMPLETED) 1.0 else it.progress) }
@@ -242,6 +286,7 @@ class JobRunner(private val h: Hjtk) {
                 if (!e.state.terminal) store.updateJob(jid) { it.copy(state = e.state.name, label = e.why) }
                 AgentService.update(h.app)
             }
+            is AgentEvent.Collab -> store.msg(conv, Role.SYSTEM, e.text, "collab", mapOf("job" to jid, "role" to e.role, "who" to e.who))
             is AgentEvent.Done -> store.msg(conv, Role.AI, com.ht.hjtk.core.stream.AepView.clean(e.final), "final", mapOf("job" to jid, "label" to e.label))
             is AgentEvent.Approval -> pending.value.values.firstOrNull { it.approval?.call?.callId == e.call.callId && it.jobId == jid }?.let { p ->
                 store.updateMsg(conv, p.msgId) { m -> m.copy(meta = m.meta + ("status" to if (e.approved) "approved" else "rejected") + ("note" to e.note)) }
@@ -382,13 +427,73 @@ class JobRunner(private val h: Hjtk) {
     fun quickAsk(convId: String, text: String) {
         busyQuick.update { it + convId }
         scope.launch {
-            try { askOnce(convId, text, waitForLogin = true) }
+            try {
+                val t = text.trim()
+                val body = t.substringAfter(' ', "").trim()
+                when {
+                    (t.startsWith("@제미나이") || t.startsWith("@gemini", true)) && body.isNotEmpty() -> askGemini(convId, body)
+                    (t.startsWith("@함께") || t.startsWith("@협업")) && body.isNotEmpty() -> askTogether(convId, body)
+                    else -> askOnce(convId, text, waitForLogin = true)
+                }
+            }
             catch (e: CancellationException) { throw e }
             catch (e: Throwable) {
                 CrashLog.record(e, "quickAsk")
                 store.msg(convId, Role.SYSTEM, explain("EXCEPTION") + " (${e.javaClass.simpleName})", "error", mapOf("via" to "EXCEPTION"))
             } finally { busyQuick.update { it - convId } }
         }
+    }
+
+    /** @제미나이: Gemini에게 직접(키가 있으면 바로, 없으면 앱으로 보내고 복사해 돌아오면 자동 수신) */
+    private suspend fun askGemini(convId: String, q: String) {
+        val r = if (h.gemini.available()) GeminiApiPort().send(q, convId, 1, true) else GeminiRelayPort(TapBudget(1)).send(q, convId, 1, true)
+        if (r.text.isNotBlank()) store.msg(convId, Role.AI, r.text.trim(), "text", mapOf("via" to r.via, "who" to "Gemini"))
+        else store.msg(convId, Role.SYSTEM, "Gemini 답을 받지 못했어요. Gemini에서 답을 복사한 뒤 HJTK로 돌아오면 자동으로 받아요. (설정 → AI 연결에서 Gemini API 키를 넣으면 바로 받습니다)", "error", mapOf("via" to "GEMINI"))
+    }
+
+    /** 대화용 두 번째 의견: Gemini(키) → 없으면 DeepSeek 별도 대화방 */
+    private suspend fun secondOpinion(convId: String, prompt: String): Pair<String, String> {
+        if (h.gemini.available()) GeminiApiPort().send(prompt, convId, 1, true).text.takeIf { it.isNotBlank() }?.let { return "Gemini" to it }
+        val base = port()
+        val key = "c:$convId"
+        val r = llmLock.withLock {
+            val sess = criticSessions[key]
+            if (base is DeepSeekWeb && sess != null) base.ensureSession(sess)
+            val rr = base.send(prompt, key, 1, sess == null || base !is DeepSeekWeb)
+            if (base is DeepSeekWeb) base.currentUrl()?.takeIf { it.contains("/a/") || it.contains("/chat/") }?.let { criticSessions[key] = it }
+            rr
+        }
+        return "${base.name} 검토창" to com.ht.hjtk.core.stream.AepView.clean(r.text)
+    }
+
+    /** @함께: 초안(DeepSeek) → 검토(두 번째 AI) → 종합(DeepSeek). 각 단계가 대화에 협업 기록으로 남는다 */
+    private suspend fun askTogether(convId: String, q: String) {
+        val first = dsAnswer(convId, q)
+        if (first.text.isBlank()) { store.msg(convId, Role.SYSTEM, explain(first.via), "error", mapOf("via" to first.via)); return }
+        val draft = com.ht.hjtk.core.stream.AepView.clean(first.text)
+        store.msg(convId, Role.SYSTEM, draft.take(600) + if (draft.length > 600) " …" else "", "collab", mapOf("role" to "초안", "who" to port().name))
+        val (who, crit) = secondOpinion(convId, "다른 AI가 아래 질문에 답했다. 냉정한 검토자로서 틀린 점·빠진 점·더 나은 관점을 3개 이내로 짚어라. 맞으면 '동의'와 이유 한 줄.\n\n[질문]\n$q\n\n[답]\n${draft.take(7000)}")
+        if (crit.isBlank()) { store.msg(convId, Role.AI, draft, "text", mapOf("via" to first.via)); return }
+        store.msg(convId, Role.SYSTEM, crit.trim().take(900), "collab", mapOf("role" to "검토", "who" to who))
+        val fin = dsAnswer(convId, "검토자($who)의 의견이다. 맞는 지적은 반영하고, 틀린 지적은 이유를 들어 반박하면서 최종 답을 다시 써라. 최종 답만.\n\n$crit")
+        val out = com.ht.hjtk.core.stream.AepView.clean(fin.text).ifBlank { draft }
+        store.msg(convId, Role.AI, out, "text", mapOf("via" to fin.via, "who" to "${port().name} × $who"))
+    }
+
+    /** 이 대화의 DeepSeek 방에서 한 번 묻고 답을 돌려준다(화면에는 아직 올리지 않음) */
+    private suspend fun dsAnswer(convId: String, text: String): LlmReply {
+        val base = port()
+        return withTimeoutOrNull(8 * 60_000L) {
+            llmLock.withLock {
+                val conv = store.conversations.value.firstOrNull { it.id == convId }
+                val fresh = conv?.dsSession == null
+                if (base is DeepSeekWeb && !fresh) base.ensureSession(conv?.dsSession)
+                streamingConv.value = convId
+                val rr = try { base.send(text, convId, 1, fresh) } finally { streamingConv.value = null }
+                if (base is DeepSeekWeb) base.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { u -> store.updateConversation(convId) { it.copy(dsSession = u) } }
+                rr
+            }
+        } ?: LlmReply("", "TIMEOUT", false, 0)
     }
 
     private suspend fun askOnce(convId: String, text: String, waitForLogin: Boolean) {
