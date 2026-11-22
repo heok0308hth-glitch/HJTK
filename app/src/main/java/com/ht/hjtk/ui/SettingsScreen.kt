@@ -108,8 +108,10 @@ fun SettingsScreen(vm: MainVm) {
             var n = 1
             PermRow(n++, "알림", "5분 보고·허락 요청", Build.VERSION.SDK_INT < 33 || Perms.granted(ctx, Manifest.permission.POST_NOTIFICATIONS)) { if (Build.VERSION.SDK_INT >= 33) perm.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) }; Hairline()
             PermRow(n++, "다른 앱 위에 표시", "쥬티 + 백그라운드에서 DeepSeek 화면 유지", Perms.overlay(ctx)) { ctx.startActivity(Perms.overlayIntent(ctx)) }; Hairline()
+            if (com.ht.hjtk.engine.Caps.a11y) {
             PermRow(n++, "화면 읽기(접근성)", if (A11yBridge.enabled(ctx) && !A11yBridge.bound()) "켜졌는데 연결 안 됨 → 앱 정보 ⋮ '제한된 설정 허용'" else "Gemini 답 자동 회수 · 화면 공유", A11yBridge.bound(), optional = true) {
                 ctx.startActivity(if (A11yBridge.enabled(ctx) && !A11yBridge.bound()) Perms.appInfo(ctx) else Perms.a11yIntent()) }; Hairline()
+            } else { NumRow(n++, "화면 읽기(접근성)", "이 빌드(standard)에는 없어요. Gemini 답은 '공유 → HJTK' 1탭으로 받습니다. 필요하면 full 빌드를 설치하세요.", trailing = "없음", dot = C.Hair); Hairline() }
             PermRow(n++, "캘린더", "구글 캘린더(기기 동기화) 읽기·쓰기", Perms.granted(ctx, Manifest.permission.READ_CALENDAR), optional = true) { perm.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) }; Hairline()
             PermRow(n++, "연락처", "받는 사람 찾기·처음 보내는 주소 판별", Perms.granted(ctx, Manifest.permission.READ_CONTACTS), optional = true) { perm.launch(arrayOf(Manifest.permission.READ_CONTACTS)) }; Hairline()
             PermRow(n++, "배터리 최적화 제외", "긴 작업이 덜 끊겨요(삼성은 '잠자는 앱'도 확인)", Perms.ignoringBattery(ctx), optional = true) { runCatching { ctx.startActivity(Perms.batteryIntent(ctx)) } }

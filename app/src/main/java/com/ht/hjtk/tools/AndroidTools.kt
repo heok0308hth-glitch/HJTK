@@ -360,7 +360,7 @@ class AndroidTools(
 
         // ── 화면·사용자 ─────────────────────────────────────────
         put("ui.read_screen") { c ->
-            if (!A11yBridge.bound()) return@put fail("화면 읽기(접근성)가 꺼져 있다. ui.ask_screen으로 사용자에게 화면을 보여달라고 하라.")
+            if (!A11yBridge.bound()) return@put fail(if (com.ht.hjtk.engine.Caps.a11y) "화면 읽기(접근성)가 꺼져 있다. ui.ask_screen으로 사용자에게 화면을 보여달라고 하라." else "이 빌드에는 화면 읽기가 없다. task.ask로 사용자에게 화면 내용을 글로 물어보라.")
             val ok = human.ask(jobId, "AI가 지금 화면의 글자를 읽으려 해요.\n이유: ${c.arg("reason")}", listOf("읽어도 돼", "안 돼"))
             if (ok != "읽어도 돼") return@put fail("사용자가 화면 읽기를 거절함")
             val s = A11yBridge.readScreen(false) ?: return@put fail("화면을 읽지 못함")

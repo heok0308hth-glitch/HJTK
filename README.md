@@ -48,8 +48,8 @@ Android에는 "다른 앱에 보낸 요청의 답을 돌려받는" 계약이 없
 ## 빌드
 
 ```bash
-./gradlew :app:testDebugUnitTest   # 코어 30개 + 화면 렌더 12개
-./gradlew :app:assembleDebug
+./gradlew :app:testStandardDebugUnitTest   # 코어 30개 + 화면 렌더 12개
+./gradlew :app:assembleStandardRelease :app:assembleFullRelease
 ```
 릴리스 서명: `keystore/hjtk-release.jks`(저장소에 올리지 않음)를 두고 `HJTK_KS_PASS` 환경변수를 설정하세요.
 
@@ -75,7 +75,8 @@ ui/          Compose — 디자인 시스템 '접지(Fold & Signal)'
 
 - 실기기에서 DeepSeek 왕복을 아직 검증하지 않았습니다(빌드 환경에 기기 없음). DeepSeek 웹 화면이 바뀌면 P0→P1→P4 순으로 내려가고, 그래도 안 되면 붙여넣기/공유로 이어갑니다.
 - 5분 보고는 Android가 보장하지 않습니다(Doze·제조사 절전). 못 지키면 표시합니다.
-- 접근성(화면 읽기)은 사이드로드 전용입니다. Android 13+에서는 앱 정보 → ⋮ → '제한된 설정 허용'이 필요할 수 있습니다.
+- **빌드 두 종류**: `standard`(기본, 접근성 없음 — 그냥 설치됨) / `full`(화면 읽기 포함). Google Play 프로텍트의 EFP는 접근성·알림 접근·SMS 권한을 선언한 앱의 사이드로드 설치를 "기기 보호를 위해 앱이 차단됨"으로 막습니다. full은 설치할 때만 Play 프로텍트 검사를 잠시 꺼야 합니다.
+- 접근성(화면 읽기)은 full 빌드 전용입니다. Android 13+에서는 앱 정보 → ⋮ → '제한된 설정 허용'이 필요할 수 있습니다.
 - 자동화는 서비스 약관과 충돌할 수 있습니다. 본인 계정·본인 세션을 쓰는 개인 도구로 설계했고, 요청 빈도를 낮게 유지합니다.
 
 만든 사람: 허태혁 (HT)

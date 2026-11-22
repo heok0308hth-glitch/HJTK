@@ -120,6 +120,9 @@ class Launcher(private val ctx: Context) {
 }
 
 /** 접근성(L3) 서비스와 앱 사이의 공유 상태. 서비스는 '요청이 있을 때만' 읽는다. */
+/** 이 빌드에 화면 읽기(접근성)가 들어 있는가 — standard 빌드에는 없다(Play 프로텍트 차단 회피). */
+object Caps { val a11y: Boolean get() = com.ht.hjtk.BuildConfig.FLAVOR == "full" }
+
 object A11yBridge {
     data class Answer(val pkg: String, val text: String)
     data class Screen(val pkg: String, val text: String, val shot: File?)

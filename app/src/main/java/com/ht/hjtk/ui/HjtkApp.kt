@@ -131,7 +131,7 @@ fun Onboarding(vm: MainVm) {
                     NumRow(2, "다른 앱 위에 표시", "쥬티 + 백그라운드 진행 안정화", dot = if (Perms.overlay(ctx)) C.Ink else C.Red, onClick = { ctx.startActivity(Perms.overlayIntent(ctx)) }); Hairline()
                     NumRow(3, "캘린더 · 연락처 (선택)", "구글 캘린더를 OAuth 없이 기기 동기화로", dot = if (Perms.granted(ctx, Manifest.permission.READ_CALENDAR)) C.Ink else C.Hair,
                         onClick = { perm.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR, Manifest.permission.READ_CONTACTS)) }); Hairline()
-                    NumRow(4, "화면 읽기 (선택)", "Gemini 답 자동 회수 · 화면 공유 도움", dot = C.Hair, onClick = { ctx.startActivity(Perms.a11yIntent()) })
+                    if (com.ht.hjtk.engine.Caps.a11y) NumRow(4, "화면 읽기 (선택)", "Gemini 답 자동 회수 · 화면 공유 도움", dot = C.Hair, onClick = { ctx.startActivity(Perms.a11yIntent()) })
                 }
                 else -> {
                     Text("어떻게\n불러 드릴까요?", style = T.display)

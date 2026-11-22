@@ -36,6 +36,14 @@ android {
         }
     }
 
+    // standard: Play 프로텍트 EFP(접근성 등 민감 권한 사이드로드 차단)에 걸리지 않는 기본 빌드
+    // full: 화면 읽기(접근성) 포함 — 설치 시 Play 프로텍트 검사를 잠시 꺼야 함
+    flavorDimensions += "dist"
+    productFlavors {
+        create("standard") { dimension = "dist" }
+        create("full") { dimension = "dist"; versionNameSuffix = "-full" }
+    }
+
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

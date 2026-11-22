@@ -83,7 +83,8 @@ fun HubScreen(vm: MainVm) {
             Connector("연락처", if (con) "받는 사람 확인" else "권한 한 번", if (con) 2 else 0, I.Chat) { permLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS)) },
             Connector("구글 드라이브·파일", "${files.size}개 고정 · 시스템 선택기", if (files.isNotEmpty()) 2 else 0, I.File) { docPicker.launch(arrayOf("*/*")) },
             Connector("네이버 검색", if (st.secrets.has("naver_id")) "공식 API 키" else "키 없이 웹 결과", 2, I.Search) { vm.go(Route.Settings) },
-            Connector("화면 읽기", if (A11yBridge.bound()) "Gemini 답 자동 회수" else if (A11yBridge.enabled(ctx)) "켜졌지만 미연결 · 제한된 설정?" else "선택 · 사이드로드 전용", if (A11yBridge.bound()) 2 else if (A11yBridge.enabled(ctx)) 1 else 0, I.Eye) { ctx.startActivity(Perms.a11yIntent()) },
+            if (com.ht.hjtk.engine.Caps.a11y) Connector("화면 읽기", if (A11yBridge.bound()) "Gemini 답 자동 회수" else if (A11yBridge.enabled(ctx)) "켜졌지만 미연결 · 제한된 설정?" else "선택 · full 빌드", if (A11yBridge.bound()) 2 else if (A11yBridge.enabled(ctx)) 1 else 0, I.Eye) { ctx.startActivity(Perms.a11yIntent()) }
+            else Connector("공유로 답 받기", "Gemini 답 → 공유 → HJTK", 2, I.Export) { vm.go(Route.Settings) },
             Connector("쥬티(펫)", if (Perms.overlay(ctx)) "다른 앱 위 표시 허용됨" else "다른 앱 위 표시 필요", if (Perms.overlay(ctx)) 2 else 1, I.Paw) { ctx.startActivity(Perms.overlayIntent(ctx)) }
         )
         Column(Modifier.fillMaxSize()) {
