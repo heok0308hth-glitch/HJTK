@@ -35,6 +35,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -68,7 +70,20 @@ fun SettingsScreen(
     var dialog by remember { mutableStateOf<String?>(null) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
     var mailTest by remember { mutableStateOf<String?>(null) }
+    var calendarGranted by remember { mutableStateOf(vm.engine.ports.calendar.canRead()) }
     val scope = rememberCoroutineScope()
+    val calendarPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        calendarGranted = granted
+        if (!granted) {
+            // Permanently denied: the only way back is the system settings page.
+            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        }
+    }
 
     Column(
         Modifier
@@ -188,11 +203,8 @@ fun SettingsScreen(
         HairlineDivider()
         ListRow(
             title = "캘린더 읽기",
-            subtitle = if (vm.engine.ports.calendar.canRead()) "허용됨" else "허용 필요 — 오늘 일정 명령",
-            onClick = { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = android.net.Uri.parse("package:${context.packageName}")
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }) }
+            subtitle = if (calendarGranted) "허용됨" else "눌러서 허용 — 오늘 일정 명령에 필요",
+            onClick = { calendarPermission.launch(android.Manifest.permission.READ_CALENDAR) }
         )
         HairlineDivider()
         ListRow(

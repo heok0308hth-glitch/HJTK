@@ -10,6 +10,8 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 
 class PlanCompilerTest {
 
@@ -171,5 +173,66 @@ class PlanCompilerTest {
         assertEquals(PlanState.DONE, outcome.state)
         assertEquals("", w.clipboard.toString(), "건너뛴 단계가 다시 실행되었습니다")
         assertEquals(1, outcome.outcomes.size)
+    }
+}
+
+/** Crash recovery: the archive is what makes "이어서 실행" real. */
+class ResumeTest {
+
+    @Test
+    fun archiveRoundTripsAPlan() {
+        val w = TestWorld()
+        val plan = (w.compiler.compile(
+            "이어서",
+            listOf(
+                SkillStep("clip.copy", mapOf("text" to "한 번만")),
+                SkillStep("device.battery")
+            )
+        ) as CompileResult.Success).plan
+        w.archive.save(plan)
+        val loaded = w.archive.load(plan.id)
+        assertEquals(plan.steps.size, loaded?.steps?.size)
+        assertEquals(plan.steps[0].args["text"], loaded?.steps?.get(0)?.args?.get("text"))
+        w.archive.clear(plan.id)
+        assertNull(w.archive.load(plan.id))
+    }
+
+    @Test
+    fun openPlanPlusArchiveResumesWithoutRepeatingTheSideEffect() = runBlocking {
+        val w = TestWorld()
+        val plan = (w.compiler.compile(
+            "재개",
+            listOf(
+                SkillStep("clip.copy", mapOf("text" to "한 번만")),
+                SkillStep("device.battery")
+            )
+        ) as CompileResult.Success).plan
+        // Simulate a process death: journal says the plan opened, step 1 finished.
+        w.journal.append("plan_started", plan.id, detail = plan.titleKo)
+        w.journal.append("step_started", plan.id, plan.steps[0].id, plan.steps[0].commandId)
+        w.journal.append("step_finished", plan.id, plan.steps[0].id, plan.steps[0].commandId)
+        w.archive.save(plan)
+        w.checkpoints.save(plan.id, plan.titleKo, mapOf(plan.steps[0].id to com.hjtk.app.core.plan.StepMemory("복사함")))
+
+        val open = w.journal.openPlan()
+        assertNotNull(open)
+        assertEquals(plan.id, open.planId)
+
+        val gate = object : ApprovalGate {
+            override suspend fun confirm(request: ApprovalRequest): Boolean = true
+        }
+        w.clipboard.clear()
+        val outcome = w.executor.run(w.archive.load(open.planId)!!, w.ports, gate, resume = true)
+        assertEquals(PlanState.DONE, outcome.state)
+        assertEquals("", w.clipboard.toString(), "이미 끝난 단계가 다시 실행되었습니다")
+    }
+
+    @Test
+    fun missingArchiveIsReportedNotGuessed() {
+        val w = TestWorld()
+        w.journal.append("plan_started", "p-lost", detail = "사라진 계획")
+        val open = w.journal.openPlan()
+        assertNotNull(open)
+        assertNull(w.archive.load(open.planId))
     }
 }

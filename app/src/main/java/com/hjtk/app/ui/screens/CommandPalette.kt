@@ -1,6 +1,8 @@
 package com.hjtk.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -91,11 +93,14 @@ fun CommandPaletteDialog(vm: HjtkViewModel, onDismiss: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Pill(text = "전체", selected = category == null, onClick = { category = null })
-                CommandCategory.entries.take(5).forEach { c ->
+                CommandCategory.entries.forEach { c ->
                     Pill(text = c.labelKo, selected = category == c, onClick = { category = if (category == c) null else c })
                 }
             }

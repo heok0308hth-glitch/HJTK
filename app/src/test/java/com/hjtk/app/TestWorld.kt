@@ -62,6 +62,7 @@ class TestWorld(val clock: FixedClock = FixedClock()) {
     val journal = Journal(storage, clock)
     val eta = EtaEstimator(storage, clock)
     val checkpoints = CheckpointStore(storage)
+    val archive = com.hjtk.app.core.plan.PlanArchive(storage)
     val registry: CommandRegistry = CommandCatalog.build()
     val compiler = PlanCompiler(registry, eta, clock)
 
@@ -189,6 +190,7 @@ class TestWorld(val clock: FixedClock = FixedClock()) {
             executor = executor,
             journal = journal,
             checkpoints = checkpoints,
+            archive = archive,
             sessions = sessions,
             pipelines = pipelines,
             clock = clock,

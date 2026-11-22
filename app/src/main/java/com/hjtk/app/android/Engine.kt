@@ -59,6 +59,7 @@ class Engine private constructor(context: Context) {
     val journal = Journal(storage, clock)
     val eta = EtaEstimator(storage, clock)
     private val checkpoints = CheckpointStore(storage)
+    private val archive = com.hjtk.app.core.plan.PlanArchive(storage)
     val registry: CommandRegistry = CommandCatalog.build()
     val compiler = PlanCompiler(registry, eta, clock)
     val router = NluRouter(registry, skills, pipelines)
@@ -78,10 +79,12 @@ class Engine private constructor(context: Context) {
         executor = executor,
         journal = journal,
         checkpoints = checkpoints,
+        archive = archive,
         sessions = sessions,
         pipelines = pipelines,
         clock = clock,
-        reportMinutes = { settings.reportMinutes }
+        reportMinutes = { settings.reportMinutes },
+        reportsEnabled = { settings.reportsEnabled }
     )
 
     private val tts = TtsSpeaker(appContext)

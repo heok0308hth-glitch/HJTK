@@ -51,12 +51,48 @@ class Journal(
     private val lock = Any()
     private val cache = ArrayList<JournalRecord>()
 
+    /** True when a torn final line was cut off during load. */
+    @Volatile
+    var healedTail: Boolean = false
+        private set
+
     init {
-        val raw = storage.read(FILE)
-        if (raw != null) {
-            raw.lineSequence().filter { it.isNotBlank() }.forEach { line ->
-                runCatching { JsonCodec.json.decodeFromString<JournalRecord>(line) }.getOrNull()?.let { cache.add(it) }
+        loadAndHeal()
+    }
+
+    /**
+     * Reads the log and cuts a half-written final line.
+     *
+     * A power loss can leave `{"seq":12,...` without its closing brace. Keeping
+     * that byte range would corrupt the next append, so the file is truncated
+     * exactly at the end of the last complete record and the event is recorded.
+     */
+    private fun loadAndHeal() {
+        val raw = storage.read(FILE) ?: return
+        var offset = 0L
+        var expectedPrev: String? = null
+        for (line in raw.split('\n')) {
+            val lineBytes = line.toByteArray(Charsets.UTF_8).size.toLong() + 1
+            if (line.isBlank()) {
+                offset += lineBytes
+                continue
             }
+            val record = runCatching { JsonCodec.json.decodeFromString<JournalRecord>(line) }.getOrNull()
+            if (record == null) {
+                storage.truncate(FILE, offset)
+                healedTail = true
+                break
+            }
+            if (expectedPrev != null && record.prevHash != expectedPrev) {
+                // Someone removed or reordered records in the middle: keep the
+                // trusted prefix and stop reading.
+                storage.truncate(FILE, offset)
+                healedTail = true
+                break
+            }
+            cache.add(record)
+            expectedPrev = record.hash
+            offset += lineBytes
         }
     }
 

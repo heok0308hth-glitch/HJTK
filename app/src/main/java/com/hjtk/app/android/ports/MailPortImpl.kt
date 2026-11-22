@@ -45,17 +45,24 @@ class MailPortImpl(
             put("mail.imaps.ssl.enable", "true")
             put("mail.imaps.connectiontimeout", "12000")
             put("mail.imaps.timeout", "15000")
+            put("mail.imaps.writetimeout", "12000")
             put("mail.smtp.host", p.smtpHost)
             put("mail.smtp.port", p.smtpPort.toString())
             put("mail.smtp.auth", "true")
             put("mail.smtp.connectiontimeout", "12000")
             put("mail.smtp.timeout", "15000")
+            put("mail.smtp.writetimeout", "12000")
             if (p.smtpPort == 465) {
                 put("mail.smtp.ssl.enable", "true")
             } else {
                 put("mail.smtp.starttls.enable", "true")
             }
         }
+    }
+
+    private fun kotlinx.coroutines.Job.invokeOnCancellationCompat(block: () -> Unit): () -> Unit {
+        val handle = invokeOnCompletion { if (it != null) block() }
+        return { handle.dispose() }
     }
 
     private fun session(p: Properties): Session {
@@ -66,44 +73,50 @@ class MailPortImpl(
         })
     }
 
-    private fun <T> withStore(block: (Store) -> T): T {
+    /**
+     * Opens a store, runs [block], always closes.
+     *
+     * javax.mail blocks a real socket thread. A coroutine cancel only interrupts
+     * that thread, so the running job is asked to close the store too: without
+     * it a cancelled mail command would hold the mail resource lock forever.
+     */
+    private suspend fun <T> withStore(block: (Store) -> T): T = withContext(Dispatchers.IO) {
         if (!isConfigured()) error("메일 계정이 연결되지 않았습니다.")
         val props = sessionProps()
         val store: Store = session(props).getStore("imaps")
         store.connect(props.getProperty("mail.imaps.host"), settings.mailAddress, settings.mailPassword)
-        return try {
+        val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        val closer = job?.invokeOnCancellationCompat { runCatching { store.close() } }
+        try {
             block(store)
         } finally {
+            closer?.invoke()
             runCatching { store.close() }
         }
     }
 
-    override suspend fun unreadCount(): Int = withContext(Dispatchers.IO) {
-        withStore { store ->
-            val inbox = store.getFolder("INBOX")
-            inbox.open(Folder.READ_ONLY)
-            try {
-                inbox.unreadMessageCount
-            } finally {
-                runCatching { inbox.close(false) }
-            }
+    override suspend fun unreadCount(): Int = withStore { store ->
+        val inbox = store.getFolder("INBOX")
+        inbox.open(Folder.READ_ONLY)
+        try {
+            inbox.unreadMessageCount
+        } finally {
+            runCatching { inbox.close(false) }
         }
     }
 
-    override suspend fun latest(limit: Int): List<MailSummary> = withContext(Dispatchers.IO) {
-        withStore { store ->
-            val inbox = store.getFolder("INBOX")
-            inbox.open(Folder.READ_ONLY)
-            try {
-                val total = inbox.messageCount
-                if (total == 0) return@withStore emptyList()
-                val from = (total - limit).coerceAtLeast(1)
-                val messages = inbox.getMessages(from, total)
-                val fmt = SimpleDateFormat("M/d HH:mm", Locale.KOREA)
-                messages.reversed().map { m -> toSummary(m, fmt) }
-            } finally {
-                runCatching { inbox.close(false) }
-            }
+    override suspend fun latest(limit: Int): List<MailSummary> = withStore { store ->
+        val inbox = store.getFolder("INBOX")
+        inbox.open(Folder.READ_ONLY)
+        try {
+            val total = inbox.messageCount
+            if (total == 0) return@withStore emptyList()
+            val from = (total - limit).coerceAtLeast(1)
+            val messages = inbox.getMessages(from, total)
+            val fmt = SimpleDateFormat("M/d HH:mm", Locale.KOREA)
+            messages.reversed().map { m -> toSummary(m, fmt) }
+        } finally {
+            runCatching { inbox.close(false) }
         }
     }
 

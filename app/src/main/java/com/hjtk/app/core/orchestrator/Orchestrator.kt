@@ -97,10 +97,12 @@ class Orchestrator(
     private val executor: Executor,
     private val journal: Journal,
     private val checkpoints: CheckpointStore,
+    private val archive: com.hjtk.app.core.plan.PlanArchive,
     private val sessions: SessionStore,
     private val pipelines: PipelineStore,
     private val clock: Clock,
     private val reportMinutes: () -> Int,
+    private val reportsEnabled: () -> Boolean = { true },
     val maxConcurrent: Int = 3,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob())
 ) : com.hjtk.app.core.PlanGateway {
@@ -188,6 +190,7 @@ class Orchestrator(
             handle.approval?.complete(false)
             handle.job?.cancel()
             journal.append("plan_finished", handle.plan.id, detail = "stopped")
+            archive.clear(handle.plan.id)
             removeJob(handle.plan.id, PlanState.CANCELLED)
             assistant("‘${handle.plan.titleKo}’ 작업을 중단했습니다. 아직 실행되지 않은 단계는 실행되지 않습니다.")
         }
@@ -206,6 +209,11 @@ class Orchestrator(
         handle.resume = true
     }
 
+    /**
+     * Rebuilds the interrupted plan from disk and runs it again from its
+     * checkpoint. A step that was mid-execution when the process died is
+     * re-approved before it runs, because its effect may or may not have landed.
+     */
     fun resumeOpenPlan() {
         val open = journal.openPlan()
         _state.value = _state.value.copy(openPlan = open)
@@ -213,7 +221,21 @@ class Orchestrator(
             assistant("이어서 실행할 작업이 없습니다.")
             return
         }
-        assistant("끊긴 작업 ‘${open.title}’이(가) 있습니다. 같은 작업을 다시 요청하면 체크포인트부터 이어서 실행합니다.")
+        val plan = archive.load(open.planId)
+        if (plan == null) {
+            assistant(
+                "끊긴 작업 ‘${open.title}’의 정의를 찾지 못했습니다(앱 데이터가 정리되었을 수 있습니다). " +
+                    "같은 요청을 다시 보내면 처음부터 실행합니다."
+            )
+            return
+        }
+        val interrupted = plan.steps.firstOrNull { it.id !in open.completedSteps }
+        assistant(
+            "‘${plan.titleKo}’을(를) 이어서 실행합니다. " +
+                (interrupted?.let { "'${it.titleKo}' 단계부터입니다." } ?: "") +
+                " 외부로 나가는 단계는 다시 확인을 받습니다."
+        )
+        enqueue(plan, resume = true)
     }
 
     // ------------------------------------------------------------- internals
@@ -283,6 +305,7 @@ class Orchestrator(
             }
         }
 
+        archive.save(plan)
         val handle = Handle(plan, resume)
         handles[plan.id] = handle
         val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
@@ -331,16 +354,23 @@ class Orchestrator(
                             when (event.outcome.state) {
                                 PlanState.DONE -> {
                                     assistant("‘${plan.titleKo}’ 작업을 마쳤습니다. ${plan.steps.size}단계.")
+                                    archive.clear(plan.id)
                                     removeJob(plan.id, PlanState.DONE)
                                 }
-                                PlanState.CANCELLED -> removeJob(plan.id, PlanState.CANCELLED)
+                                PlanState.CANCELLED -> {
+                                    archive.clear(plan.id)
+                                    removeJob(plan.id, PlanState.CANCELLED)
+                                }
                                 else -> {
                                     notice(
                                         "‘${plan.titleKo}’ 작업을 끝내지 못했습니다",
                                         event.outcome.failure ?: "알 수 없는 이유",
                                         NoticeTone.ERROR
                                     )
-                                    updateJob(plan.id) { it.copy(state = PlanState.FAILED, activeStep = null, pendingApproval = null) }
+                                    // A failed job is reported in the conversation and
+                                    // removed from the running list: it is not running.
+                                    archive.clear(plan.id)
+                                    removeJob(plan.id, PlanState.FAILED)
                                 }
                             }
                         }
@@ -366,9 +396,11 @@ class Orchestrator(
     }
 
     private suspend fun reportLoop(planId: String) {
+        if (!reportsEnabled()) return
         val interval = reportIntervalOverrideMs ?: (reportMinutes().coerceIn(1, 60) * 60_000L)
         while (scope.isActive) {
             delay(interval)
+            if (!reportsEnabled()) break
             val job = _state.value.job(planId) ?: break
             if (job.state != PlanState.RUNNING && job.state != PlanState.PAUSED) break
             val report = ProgressReport(

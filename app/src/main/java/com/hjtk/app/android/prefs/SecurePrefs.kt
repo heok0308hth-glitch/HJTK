@@ -11,6 +11,8 @@ import javax.crypto.spec.GCMParameterSpec
 /** Where the AES key comes from. Production: the Android Keystore. */
 interface KeyProvider {
     fun key(): SecretKey?
+    /** Drops a key that can no longer decrypt (lock screen changed, reset). */
+    fun reset() = Unit
 }
 
 /**
@@ -34,6 +36,13 @@ class KeystoreKeyProvider : KeyProvider {
                 .build()
         )
         return gen.generateKey()
+    }
+
+    override fun reset() {
+        runCatching {
+            val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }
+            ks.deleteEntry(ALIAS)
+        }
     }
 
     private companion object {
@@ -96,7 +105,15 @@ class SecurePrefs(
     fun get(name: String): String? {
         val packed = prefs.getString(name, null) ?: return null
         val key = provider.key() ?: return null
-        return SecretCodec.decrypt(key, packed)
+        val value = SecretCodec.decrypt(key, packed)
+        if (value == null) {
+            // KeyPermanentlyInvalidatedException / AEADBadTag: the stored
+            // ciphertext can never be read again. Drop the key so the next
+            // write creates a fresh one instead of failing forever.
+            provider.reset()
+            prefs.edit().remove(name).apply()
+        }
+        return value
     }
 
     fun has(name: String): Boolean = !get(name).isNullOrEmpty()

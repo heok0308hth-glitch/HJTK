@@ -78,3 +78,38 @@ class JournalTest {
         assertTrue(fresh.verify().ok)
     }
 }
+
+class JournalHealingTest {
+
+    @Test
+    fun tornFinalLineIsCutAndTheLogStaysUsable() {
+        val w = TestWorld()
+        w.journal.append("plan_started", "p1", detail = "중단 작업")
+        w.journal.append("step_finished", "p1", "s1", "device.battery")
+        // Simulate a power loss mid-write: half a JSON line, no newline.
+        w.storage.append("journal.jsonl", "{\"seq\":3,\"at\":17000")
+
+        val healed = Journal(w.storage, w.clock)
+        assertEquals(2, healed.records().size)
+        assertTrue(healed.healedTail, "잘린 꼬리를 복구했다고 표시해야 합니다")
+        assertTrue(healed.verify().ok)
+
+        // The next append continues the chain instead of corrupting it.
+        healed.append("plan_finished", "p1")
+        assertTrue(Journal(w.storage, w.clock).verify().ok)
+        assertEquals(3, Journal(w.storage, w.clock).records().size)
+    }
+
+    @Test
+    fun reorderedRecordsAreRejected() {
+        val w = TestWorld()
+        w.journal.append("plan_started", "p1")
+        w.journal.append("step_finished", "p1", "s1")
+        w.journal.append("plan_finished", "p1")
+        val lines = w.storage.read("journal.jsonl")!!.lines().filter { it.isNotBlank() }
+        // Swap the last two lines: the chain no longer links.
+        w.storage.write("journal.jsonl", listOf(lines[0], lines[2], lines[1]).joinToString("\n") + "\n")
+        val reloaded = Journal(w.storage, w.clock)
+        assertTrue(reloaded.records().size <= 2, "손상된 이후 레코드는 읽지 않아야 합니다")
+    }
+}

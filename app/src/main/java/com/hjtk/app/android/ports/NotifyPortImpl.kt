@@ -72,7 +72,7 @@ class NotifyPortImpl(private val context: Context) : NotifyPort {
         runCatching { NotificationManagerCompat.from(context).notify(id, notification) }
     }
 
-    override suspend fun scheduleTimer(label: String, seconds: Int) = withContext(Dispatchers.Main) {
+    override suspend fun scheduleTimer(label: String, seconds: Int): Unit = withContext(Dispatchers.Main) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, TimerReceiver::class.java).apply {
             putExtra("label", label)
@@ -84,10 +84,16 @@ class NotifyPortImpl(private val context: Context) : NotifyPort {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val at = System.currentTimeMillis() + seconds * 1000L
-        // setAndAllowWhileIdle works without the exact-alarm permission; the
-        // notification may land a little late on a dozing device, which is the
-        // honest behaviour for an ordinary reminder.
-        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+        // Exact alarms need a user grant on API 31+. When it is missing we fall
+        // back to an inexact alarm instead of throwing SecurityException — the
+        // reminder may land a little late on a dozing device, which is honest.
+        val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+        if (canExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            runCatching { am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending) }
+                .onFailure { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending) }
+        } else {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+        }
     }
 
     override suspend fun setAlarm(label: String, hour: Int, minute: Int) = withContext(Dispatchers.Main) {

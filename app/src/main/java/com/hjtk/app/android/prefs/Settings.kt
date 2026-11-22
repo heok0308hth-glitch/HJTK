@@ -20,7 +20,6 @@ class Settings(context: Context) {
         val preferredCarrier: String,
         val developerMode: Boolean,
         val reportsEnabled: Boolean,
-        val autoApproveReads: Boolean,
         val mailProvider: String,
         val mailAddress: String
     )
@@ -34,7 +33,6 @@ class Settings(context: Context) {
         preferredCarrier = prefs.getString("carrier", "auto") ?: "auto",
         developerMode = prefs.getBoolean("dev_mode", false),
         reportsEnabled = prefs.getBoolean("reports", true),
-        autoApproveReads = prefs.getBoolean("auto_reads", true),
         mailProvider = prefs.getString("mail_provider", "naver") ?: "naver",
         mailAddress = prefs.getString("mail_address", "") ?: ""
     )
@@ -62,10 +60,6 @@ class Settings(context: Context) {
     var reportsEnabled: Boolean
         get() = _state.value.reportsEnabled
         set(v) { prefs.edit().putBoolean("reports", v).apply(); publish() }
-
-    var autoApproveReads: Boolean
-        get() = _state.value.autoApproveReads
-        set(v) { prefs.edit().putBoolean("auto_reads", v).apply(); publish() }
 
     // ---- secrets -------------------------------------------------------
 

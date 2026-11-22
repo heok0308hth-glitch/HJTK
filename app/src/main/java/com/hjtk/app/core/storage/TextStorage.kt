@@ -9,6 +9,8 @@ interface TextStorage {
     fun write(name: String, text: String)
     /** Append one line; used by the write-ahead journal. */
     fun append(name: String, line: String)
+    /** Cut the file back to [bytes]; used to drop a torn final line. */
+    fun truncate(name: String, bytes: Long)
     fun delete(name: String)
 }
 
@@ -36,7 +38,21 @@ class FileTextStorage(private val dir: File) : TextStorage {
 
     override fun append(name: String, line: String) {
         val f = File(dir, name)
-        f.appendText(line + "\n")
+        // fsync: a journal line that reached the page cache but not the disk is
+        // exactly the record we need after a crash.
+        java.io.FileOutputStream(f, true).use { out ->
+            out.write((line + "\n").toByteArray(Charsets.UTF_8))
+            out.flush()
+            runCatching { out.fd.sync() }
+        }
+    }
+
+    override fun truncate(name: String, bytes: Long) {
+        val f = File(dir, name)
+        if (!f.exists()) return
+        java.io.RandomAccessFile(f, "rw").use { raf ->
+            if (bytes < raf.length()) raf.setLength(bytes)
+        }
     }
 
     override fun delete(name: String) {
@@ -53,6 +69,12 @@ class MemoryTextStorage : TextStorage {
 
     override fun append(name: String, line: String) {
         map[name] = (map[name] ?: "") + line + "\n"
+    }
+
+    override fun truncate(name: String, bytes: Long) {
+        val current = map[name] ?: return
+        val cut = current.toByteArray(Charsets.UTF_8).take(bytes.toInt().coerceIn(0, current.length)).toByteArray()
+        map[name] = String(cut, Charsets.UTF_8)
     }
 
     override fun delete(name: String) {
