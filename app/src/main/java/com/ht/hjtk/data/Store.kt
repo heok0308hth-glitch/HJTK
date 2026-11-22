@@ -98,7 +98,7 @@ data class Settings(
 class Store(private val ctx: Context) {
     private val dir = File(ctx.filesDir, "hjtk").apply { mkdirs() }
     val workspace = File(ctx.filesDir, "workspace").apply { mkdirs() }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + com.ht.hjtk.engine.CrashLog.handler("store"))
     private val pendingSaves = HashMap<String, Job>()
     val secrets = Secrets(ctx)
 
@@ -116,6 +116,9 @@ class Store(private val ctx: Context) {
     val settings = MutableStateFlow(Settings())
     val knownRecipients = MutableStateFlow<Set<String>>(emptySet())
     val deadlines = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+
+    /** 메시지를 디스크에서 읽어 둔 대화 id (init보다 먼저 선언해야 한다) */
+    private val loaded = HashSet<String>()
 
     init { load() }
 
@@ -137,9 +140,21 @@ class Store(private val ctx: Context) {
         knownRecipients.value = list("recipients.json") { it.getString("a") }.toSet()
         deadlines.value = list("deadlines.json") { it.getString("t") to it.getString("d") }
         settings.value = runCatching { Settings.from(JSONObject(read("settings.json") ?: "{}")) }.getOrDefault(Settings())
-        val msgs = HashMap<String, List<Msg>>()
-        conversations.value.forEach { c -> msgs[c.id] = list("m_${c.id}.json") { Msg.from(it) } }
-        messages.value = msgs
+        // 시작 속도: 최근 대화 3개만 바로 읽고, 나머지는 백그라운드에서 채운다(앱 시작이 대화 수에 비례해 느려지지 않게)
+        val recent = conversations.value.sortedByDescending { it.updatedAt }
+        recent.take(3).forEach { ensureLoaded(it.id) }
+        if (recent.size > 3) scope.launch { recent.drop(3).forEach { ensureLoaded(it.id) } }
+    }
+
+
+    /** 이 대화의 메시지를 디스크에서 읽어 둔다. 쓰기 전에 반드시 호출된다(덜 읽은 목록으로 파일을 덮어쓰지 않게). */
+    fun ensureLoaded(convId: String) {
+        synchronized(loaded) {
+            if (convId in loaded) return
+            val disk = list("m_$convId.json") { Msg.from(it) }
+            messages.update { m -> m + (convId to (disk + (m[convId] ?: emptyList()).filter { x -> disk.none { it.id == x.id } })) }
+            loaded += convId
+        }
     }
 
     private fun save(name: String, content: () -> String) {
@@ -154,7 +169,7 @@ class Store(private val ctx: Context) {
     }
 
     private fun persistConvs() = save("conversations.json") { JSONArray(conversations.value.map { it.toJson() }).toString() }
-    private fun persistMsgs(convId: String) = save("m_$convId.json") { JSONArray((messages.value[convId] ?: emptyList()).map { it.toJson() }).toString() }
+    private fun persistMsgs(convId: String) = if (synchronized(loaded) { convId !in loaded }) Unit else save("m_$convId.json") { JSONArray((messages.value[convId] ?: emptyList()).map { it.toJson() }).toString() }
     private fun persistJobs() = save("jobs.json") { JSONArray(jobs.value.map { it.toJson() }).toString() }
     fun persistHub() {
         save("sites.json") { JSONArray(sites.value.map { JSONObject().put("id", it.id).put("name", it.name).put("url", it.url) }).toString() }
@@ -174,7 +189,7 @@ class Store(private val ctx: Context) {
     fun newConversation(title: String = "새 대화"): Conversation {
         val now = System.currentTimeMillis()
         val c = Conversation("c" + UUID.randomUUID().toString().take(8), title, now, now)
-        conversations.update { listOf(c) + it }; messages.update { it + (c.id to emptyList()) }
+        conversations.update { listOf(c) + it }; messages.update { it + (c.id to emptyList()) }; synchronized(loaded) { loaded += c.id }
         persistConvs(); return c
     }
     fun updateConversation(id: String, f: (Conversation) -> Conversation) { conversations.update { l -> l.map { if (it.id == id) f(it) else it } }; persistConvs() }
@@ -183,6 +198,7 @@ class Store(private val ctx: Context) {
         File(dir, "m_$id.json").delete(); persistConvs()
     }
     fun add(m: Msg) {
+        ensureLoaded(m.convId)
         messages.update { it + (m.convId to ((it[m.convId] ?: emptyList()) + m)) }
         updateConversation(m.convId) { c ->
             val title = if (c.title == "새 대화" && m.role == Role.USER) m.text.lines().first().take(28) else c.title
@@ -191,6 +207,7 @@ class Store(private val ctx: Context) {
         persistMsgs(m.convId)
     }
     fun updateMsg(convId: String, msgId: String, f: (Msg) -> Msg) {
+        ensureLoaded(convId)
         messages.update { it + (convId to (it[convId] ?: emptyList()).map { m -> if (m.id == msgId) f(m) else m }) }
         persistMsgs(convId)
     }

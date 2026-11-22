@@ -3,19 +3,23 @@
 (function () {
   if (window.__hjtkTap) return; window.__hjtkTap = 1;
   var B = window.HJTKTap; if (!B) return;
-  var CAP = 6 << 20, seen = 0, buf = {}, timers = {};
+  var CAP = 6 << 20, buf = {}, timers = {}, seen = {};
   function flush(id) { if (buf[id]) { var s = buf[id]; buf[id] = ''; try { B.chunk(id, s); } catch (e) {} } }
   function push(id, s) {
-    if (seen > CAP) return; seen += s.length; buf[id] = (buf[id] || '') + s;
+    seen[id] = (seen[id] || 0) + s.length; if (seen[id] > CAP) return;   // 상한은 스트림마다(페이지 전체가 아니라)
+    buf[id] = (buf[id] || '') + s;
     if (buf[id].length > 8192) flush(id);
     else if (!timers[id]) timers[id] = setTimeout(function () { timers[id] = 0; flush(id); }, 40);
   }
+  function done(id, why) { flush(id); delete seen[id]; delete buf[id]; try { B.end(id, why); } catch (e) {} }
   function interesting(url, ct, m) {
     if (m !== 'POST') return false;
     if (!/^https:\/\/chat\.deepseek\.com\//.test(String(url || ''))) return false;
     if (/event-stream/i.test(ct || '')) return true;
     return /completion|chat\/.*stream|regenerate|continue/i.test(String(url)) && /ndjson|json/i.test(ct || '');
   }
+  // 관찰은 '통과형'이다. clone()은 긴 답의 사본을 렌더러 힙에 하나 더 쌓아 WebView가 메모리로 죽는 원인이 된다.
+  // 페이지가 읽는 바로 그 조각을 지나가며 본다.
   var of = window.fetch;
   if (of) window.fetch = function (input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) || '';
@@ -23,18 +27,24 @@
     return of.apply(this, arguments).then(function (res) {
       try {
         var ct = res.headers.get('content-type') || '';
-        if (!interesting(url, ct, m)) return res;
+        if (!interesting(url, ct, m) || !res.body || typeof ReadableStream === 'undefined') return res;
         var id = 'f' + Math.random().toString(36).slice(2, 10);
         B.open(id, String(url), ct, res.status);
-        var rd = res.clone().body.getReader(), dec = new TextDecoder('utf-8');
-        (function pump() {
-          rd.read().then(function (x) {
-            if (x.done) { flush(id); B.end(id, 'eof'); return; }
-            push(id, dec.decode(x.value, { stream: true })); pump();
-          }).catch(function () { flush(id); B.end(id, 'err'); });
-        })();
-      } catch (e) { try { B.end('?', 'hookfail'); } catch (e2) {} }
-      return res;
+        var rd = res.body.getReader(), dec = new TextDecoder('utf-8'), closed = false;
+        var body = new ReadableStream({
+          pull: function (ctl) {
+            return rd.read().then(function (x) {
+              if (x.done) { if (!closed) { closed = true; done(id, 'eof'); } ctl.close(); return; }
+              try { push(id, dec.decode(x.value, { stream: true })); } catch (e) {}
+              ctl.enqueue(x.value);
+            }, function (err) { if (!closed) { closed = true; done(id, 'err'); } ctl.error(err); });
+          },
+          cancel: function (r) { if (!closed) { closed = true; done(id, 'cancel'); } try { return rd.cancel(r); } catch (e) {} }
+        });
+        var out = new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+        try { Object.defineProperty(out, 'url', { value: res.url }); Object.defineProperty(out, 'redirected', { value: res.redirected }); } catch (e) {}
+        return out;
+      } catch (e) { try { B.end('?', 'hookfail'); } catch (e2) {} return res; }
     });
   };
   var OX = window.XMLHttpRequest;
@@ -51,7 +61,7 @@
           var t = x.responseText || ''; if (t.length > c.n) { push(id, t.slice(c.n)); c.n = t.length; }
         } catch (e) {}
       });
-      x.addEventListener('loadend', function () { if (opened) { flush(id); B.end(id, 'xhr'); } });
+      x.addEventListener('loadend', function () { if (opened) done(id, 'xhr'); });
       return oSend.apply(this, arguments);
     };
   }
@@ -103,10 +113,21 @@
     return 'NONE';
   };
   window.__hjtkState = function () {
-    var pw = !!document.querySelector('input[type="password"]');
-    var box = !!(document.querySelector('textarea') || document.querySelector('[contenteditable="true"]'));
-    var ch = /challenges\.cloudflare\.com|Just a moment|cf-chl/i.test(document.documentElement.innerHTML.slice(0, 20000));
-    return ch ? 'CHALLENGE' : (pw ? 'LOGIN' : (box ? 'READY' : 'LOADING'));
+    var p = location.pathname || '';
+    try { B.href && B.href(location.href); } catch (e) {}
+    var head = document.documentElement ? document.documentElement.innerHTML.slice(0, 20000) : '';
+    if (/challenges\.cloudflare\.com|Just a moment|cf-chl/i.test(head)) return 'CHALLENGE';
+    if (/sign_in|sign_up|signin|login|register/i.test(p)) return 'LOGIN';
+    if (document.querySelector('input[type="password"]')) return 'LOGIN';
+    var box = document.querySelector('textarea') || document.querySelector('[contenteditable="true"]');
+    if (box) return 'READY';
+    if (document.readyState === 'complete') {
+      // 입력창이 없고 로그인 문구·전화/메일 입력만 있으면 로그인 화면이다(비밀번호 칸이 없는 인증코드 로그인 포함)
+      var tel = document.querySelector('input[type="tel"],input[type="email"],input[autocomplete*="username"]');
+      var t = (document.body && document.body.innerText || '').slice(0, 3000);
+      if (tel || /登录|Log in|Sign in|로그인/i.test(t)) return 'LOGIN';
+    }
+    return 'LOADING';
   };
   window.__hjtkLastAnswer = function () {
     var n = document.querySelectorAll('.ds-markdown');

@@ -204,9 +204,9 @@ class SnapshotReconciler {
 
 /** 4중 종료 판정: 명시 종료 / EOF / 침묵 / 상한 */
 class TerminationGate(
-    private val silenceMs: Long = 1_400,
+    private val silenceMs: Long = 3_500,
     private val emptyMs: Long = 25_000,
-    private val hardMs: Long = 240_000,
+    private val hardMs: Long = 360_000,
     private val maxChars: Int = 200_000
 ) {
     enum class Verdict { RUNNING, DONE, SILENCE_DONE, EMPTY, TIMEOUT, TRUNCATED }
@@ -215,9 +215,13 @@ class TerminationGate(
     fun start(now: Long) { started = now; lastChunk = now }
     fun onChunk(now: Long) { lastChunk = now }
 
+    /**
+     * chars는 '답' 길이다. 생각(THINK) 단계에서는 답이 0자여도 조각은 계속 온다.
+     * 그래서 EMPTY는 '시작 후 경과'가 아니라 '마지막 조각 이후 침묵'으로 판단한다.
+     */
     fun poll(now: Long, chars: Int, explicitDone: Boolean, strongMarker: Boolean): Verdict = when {
         explicitDone || strongMarker -> Verdict.DONE
-        chars == 0 && now - started > emptyMs -> Verdict.EMPTY
+        chars == 0 && now - lastChunk > emptyMs -> Verdict.EMPTY
         now - started > hardMs -> Verdict.TIMEOUT
         chars > maxChars -> Verdict.TRUNCATED
         chars > 0 && now - lastChunk > silenceMs -> Verdict.SILENCE_DONE

@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,6 +38,8 @@ import com.ht.hjtk.data.Msg
 import com.ht.hjtk.data.Role
 import com.ht.hjtk.engine.Clip
 import com.ht.hjtk.engine.DeepSeekWeb
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,7 +58,19 @@ fun ChatScreen(vm: MainVm) {
     val conv = convs.firstOrNull { it.id == cid }
     val activeJob = jobs.firstOrNull { it.convId == cid && (it.running || it.state == "SUSPENDED") }
     val list = rememberLazyListState()
-    LaunchedEffect(msgs.size, busy) { if (msgs.isNotEmpty()) list.animateScrollToItem(msgs.size) }
+    val ime = imeOpen()
+    val thinking = cid in busy
+    // 바닥 근처에 있을 때만 따라 내려간다. 위로 올려 읽는 중이면 끌어내리지 않고 '최신' 버튼에 개수만 쌓는다.
+    val atBottom by remember { derivedStateOf { val li = list.layoutInfo; (li.visibleItemsInfo.lastOrNull()?.index ?: 0) >= li.totalItemsCount - 2 } }
+    var unseen by remember(cid) { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(cid) { if (msgs.isNotEmpty()) list.scrollToItem(msgs.size) }
+    LaunchedEffect(msgs.size, thinking) {
+        if (msgs.isEmpty()) return@LaunchedEffect
+        if (msgs.last().role == Role.USER || atBottom) { list.animateScrollToItem((list.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)); unseen = 0 } else unseen++
+    }
+    LaunchedEffect(ime) { if (ime && msgs.isNotEmpty()) list.scrollToItem((list.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) }
+    LaunchedEffect(atBottom) { if (atBottom) unseen = 0 }
 
     Column(Modifier.fillMaxSize()) {
         // ── 머리 ──
@@ -75,23 +90,35 @@ fun ChatScreen(vm: MainVm) {
         }
         Hairline()
 
-        activeJob?.let { SignalPanel(vm, it) }
+        activeJob?.let { if (ime) SignalSlim(vm, it) else SignalPanel(vm, it) }
 
         Box(Modifier.weight(1f)) {
-            if (msgs.isEmpty()) EmptyChat(vm)
+            if (msgs.isEmpty()) { if (ime) Spacer(Modifier.fillMaxSize()) else EmptyChat(vm) }
             else LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)) {
-                items(msgs, key = { it.id }) { m -> MessageView(vm, m); Spacer(Modifier.height(10.dp)) }
-                if (cid in busy) item { Thinking() }
+                items(msgs, key = { it.id }, contentType = { it.kind }) { m -> MessageView(vm, m); Spacer(Modifier.height(10.dp)) }
+                if (thinking) item(key = "thinking", contentType = "thinking") { Thinking() }
+            }
+            if (!atBottom && msgs.size > 4) Row(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp).clip(RoundedCornerShape(50)).background(C.Ink)
+                    .press({ scope.launch { list.animateScrollToItem((list.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) } }).padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Ico(I.Down, 14.dp, C.OnInk); Spacer(Modifier.width(6.dp))
+                Text(if (unseen > 0) "새 메시지 $unseen" else "최신으로", style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp))
             }
         }
-        Composer(vm)
+        Composer(vm, ime)
     }
 }
 
 @Composable
 private fun Thinking() {
+    // 경과 초를 보여 준다: '멈췄나?'와 '생각 중'을 사용자가 구분할 수 있게
+    var sec by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { if (Motion.enabled) while (true) { delay(1000); sec++ } }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
-        SignalDot(C.Ink, 6.dp, pulse = true); Spacer(Modifier.width(8.dp)); Label("DeepSeek에게 묻는 중")
+        SignalDot(C.Ink, 6.dp, pulse = true); Spacer(Modifier.width(8.dp))
+        Label(if (sec < 3) "DeepSeek에게 묻는 중" else "DeepSeek에게 묻는 중 · ${sec}초")
     }
 }
 
@@ -119,6 +146,20 @@ private fun EmptyChat(vm: MainVm) {
             NumRow(i + 1, t, s, onClick = { vm.draft.value = t })
             if (i < ideas.lastIndex) Hairline()
         }
+    }
+}
+
+/** 키보드가 열렸을 때의 작업 신호: 한 줄(36dp)로 접는다 */
+@Composable
+private fun SignalSlim(vm: MainVm, j: JobRec) {
+    val needs = j.state == "PAUSED_APPROVAL" || j.state == "PAUSED_INPUT"
+    Column(Modifier.fillMaxWidth().background(C.Ink).press({ vm.go(Route.Job(j.id)) })) {
+        Row(Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            SignalDot(C.Red, 6.dp, pulse = true); Spacer(Modifier.width(8.dp))
+            Text(if (needs) "당신이 필요해요 · ${j.label}" else j.now.ifBlank { j.goal }, style = T.small.copy(color = C.OnInk, fontSize = 12.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (j.eta.isNotBlank()) Label(j.eta, color = C.OnInkMute)
+        }
+        Box(Modifier.fillMaxWidth().height(2.dp).background(C.Ink3)) { Box(Modifier.fillMaxWidth(j.progress.toFloat().coerceIn(0f, 1f)).fillMaxHeight().background(C.Red)) }
     }
 }
 
@@ -199,7 +240,7 @@ private fun UserBubble(m: Msg) {
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(max = 300.dp)) {
             if (m.meta["mission"] == "true" || m.meta["expanded"] != null) Label(if (m.meta["expanded"] != null) "사용자 명령 → 작업" else "작업으로 맡김", Modifier.padding(bottom = 4.dp), C.Red)
             Box(Modifier.clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)).background(C.Ink).padding(horizontal = 14.dp, vertical = 10.dp)) {
-                Text(m.text, style = T.body.copy(color = C.OnInk))
+                SelectionContainer { Text(m.text, style = T.body.copy(color = C.OnInk)) }
             }
         }
     }
@@ -214,7 +255,7 @@ private fun AiText(m: Msg) {
             Spacer(Modifier.width(8.dp)); Text(hm.format(Date(m.at)), style = T.label)
         }
         Spacer(Modifier.height(4.dp))
-        MdText(m.text)
+        SelectionContainer { MdText(m.text) }   // 길게 눌러 원하는 부분만 복사
     }
 }
 
@@ -379,19 +420,40 @@ private fun ScreenCard(m: Msg) {
 
 @Composable
 private fun ErrorRow(vm: MainVm, m: Msg) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(C.RedSoft).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        SignalDot(C.Red); Spacer(Modifier.width(10.dp))
-        Text(m.text, style = T.small.copy(color = C.Ink), modifier = Modifier.weight(1f))
-        if (m.meta["via"] in listOf("NEEDS_LOGIN", "CHALLENGE", "NOT_READY", "NONE", "P1_DOM")) {
-            Spacer(Modifier.width(8.dp)); Text("조종석", style = T.small.copy(color = C.Ink, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.go(Route.Cockpit) }))
+    val via = m.meta["via"].orEmpty()
+    val waiting = m.meta["waiting"] == "1"
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(C.RedSoft).padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.Top) {
+            Box(Modifier.padding(top = 5.dp)) { SignalDot(C.Red, pulse = waiting) }
+            Spacer(Modifier.width(10.dp))
+            Text(m.text, style = T.small.copy(color = C.Ink), modifier = Modifier.weight(1f))
+        }
+        val cockpit = via in setOf("NEEDS_LOGIN", "CHALLENGE", "NOT_READY", "NONE", "P1_DOM", "OFFLINE", "RENDERER_GONE") || via.startsWith("INPUT_")
+        val retry = via in setOf("OFFLINE", "NOT_READY", "RENDERER_GONE", "EXCEPTION", "TIMEOUT", "NONE") || via.startsWith("INPUT_")
+        val copy = via == "CRASH"
+        if (cockpit || retry || copy) Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (waiting) Label("로그인 기다리는 중", color = C.Red, modifier = Modifier.padding(vertical = 8.dp).weight(1f)) else Spacer(Modifier.weight(1f))
+            if (copy) ErrAction("복사") {
+                val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                cm?.setPrimaryClip(android.content.ClipData.newPlainText("HJTK crash", m.meta["detail"] ?: m.text))
+            }
+            if (retry) ErrAction("다시 보내기") { vm.retryLast() }
+            if (cockpit) ErrAction(if (via == "NEEDS_LOGIN") "로그인하기" else "조종석", strong = true) { vm.go(Route.Cockpit) }
         }
     }
+}
+
+@Composable
+private fun ErrAction(label: String, strong: Boolean = false, onClick: () -> Unit) {
+    Text(label, style = T.small.copy(color = if (strong) C.OnInk else C.Ink, fontWeight = FontWeight.Bold),
+        modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(if (strong) C.Ink else Color.Transparent).press(onClick).padding(horizontal = 12.dp, vertical = 7.dp))
 }
 
 /** 의존성 없는 가벼운 마크다운 렌더(제목·목록·굵게·코드·표는 고정폭) */
 @Composable
 fun MdText(text: String, color: Color = C.Ink) {
-    val lines = text.trim().lines()
+    val lines = remember(text) { text.trim().lines() }
     Column {
         var inCode = false
         val code = StringBuilder()
@@ -447,15 +509,17 @@ private fun inline(s: String): AnnotatedString = buildAnnotatedString {
 }
 
 @Composable
-private fun Composer(vm: MainVm) {
+private fun Composer(vm: MainVm, ime: Boolean) {
     val text by vm.draft.collectAsState()
     val mode by vm.mode.collectAsState()
-    val suggestions = remember(text) { if (text.startsWith("/") && !text.contains(' ')) CommandCatalog.search(text.drop(1)).take(5) else emptyList() }
+    val slash = text.startsWith("/") && !text.contains(' ')
+    val suggestions = remember(text) { if (slash) CommandCatalog.search(text.drop(1)).take(if (ime) 3 else 5) else emptyList() }
     val customs by vm.store.customs.collectAsState()
-    Column(Modifier.fillMaxWidth().background(C.Paper).navigationBarsPadding().imePadding()) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Column(Modifier.fillMaxWidth().background(C.Paper).navigationBarsPadding()) {
         Hairline()
-        if (suggestions.isNotEmpty() || (text.startsWith("/") && !text.contains(' '))) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        if (suggestions.isNotEmpty() || slash) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
                 customs.filter { it.trigger.startsWith(text) }.take(2).forEach { c ->
                     Row(Modifier.fillMaxWidth().press({ vm.draft.value = c.trigger + " " }).padding(vertical = 7.dp)) { Text(c.trigger, style = T.mono.copy(fontWeight = FontWeight.Bold, color = C.Red), modifier = Modifier.width(110.dp)); Text(c.expandsTo, style = T.small, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
@@ -468,19 +532,29 @@ private fun Composer(vm: MainVm) {
             }
             Hairline()
         }
-        Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        // 키보드가 닫혀 있을 때만 모드 칩 줄을 펼친다. 열리면 왼쪽 버튼 하나가 모드 전환을 맡는다(세로 44dp 절약).
+        if (!ime) Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Mode.values().forEach { md -> Chip(md.label, mode == md) { vm.mode.value = md } }
             Spacer(Modifier.weight(1f))
             if (mode == Mode.AUTO && text.isNotBlank()) Label(if (com.ht.hjtk.core.InputRouter.looksLikeMission(text)) "→ 작업으로" else "→ 대화로", color = C.Graphite)
         }
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Bottom) {
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, C.Hair, RoundedCornerShape(8.dp)).press({ vm.paletteOpen.value = true }), contentAlignment = Alignment.Center) { Ico(I.Slash, 20.dp) }
+        Row(Modifier.padding(start = 12.dp, end = 12.dp, top = if (ime) 8.dp else 12.dp, bottom = if (ime) 8.dp else 12.dp), verticalAlignment = Alignment.Bottom) {
+            if (ime) {
+                val auto = if (mode == Mode.AUTO && text.isNotBlank()) (if (com.ht.hjtk.core.InputRouter.looksLikeMission(text)) "작업" else "대화") else null
+                Column(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, if (mode == Mode.MISSION) C.Red else C.Hair, RoundedCornerShape(8.dp))
+                    .press({ haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); vm.mode.value = Mode.values()[(mode.ordinal + 1) % Mode.values().size] }),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text(when (mode) { Mode.AUTO -> "자동"; Mode.QUICK -> "대화"; Mode.MISSION -> "작업" }, style = T.small.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (mode == Mode.MISSION) C.Red else C.Ink))
+                    if (auto != null) Text("→$auto", style = T.label.copy(fontFamily = Pretendard, fontSize = 9.sp, letterSpacing = 0.sp, color = C.Mute))
+                }
+            } else Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, C.Hair, RoundedCornerShape(8.dp)).press({ vm.paletteOpen.value = true }), contentAlignment = Alignment.Center) { Ico(I.Slash, 20.dp) }
             Spacer(Modifier.width(8.dp))
-            BasicTextField(text, { vm.draft.value = it }, textStyle = T.body, cursorBrush = SolidColor(C.Ink), maxLines = 6,
+            BasicTextField(text, { vm.draft.value = it }, textStyle = T.body, cursorBrush = SolidColor(C.Ink), maxLines = if (ime) 4 else 6,
                 modifier = Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp)).background(C.Paper2).padding(horizontal = 12.dp, vertical = 11.dp),
-                decorationBox = { inner -> if (text.isEmpty()) Text(if (mode == Mode.MISSION) "맡길 일을 적어 주세요 — 오래 걸려도 괜찮아요" else "메시지 · / 로 명령어", style = T.body.copy(color = C.Mute)); inner() })
+                decorationBox = { inner -> if (text.isEmpty()) Text(if (mode == Mode.MISSION) "맡길 일을 적어 주세요 — 오래 걸려도 괜찮아요" else "메시지 · / 로 명령어", style = T.body.copy(color = C.Mute), maxLines = 1, overflow = TextOverflow.Ellipsis); inner() })
             Spacer(Modifier.width(8.dp))
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(if (text.isBlank()) C.Paper3 else if (mode == Mode.MISSION) C.Red else C.Ink).press({ vm.send(text) }, enabled = text.isNotBlank()), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(if (text.isBlank()) C.Paper3 else if (mode == Mode.MISSION) C.Red else C.Ink)
+                .press({ haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.send(text) }, enabled = text.isNotBlank()), contentAlignment = Alignment.Center) {
                 Ico(I.Send, 20.dp, if (text.isBlank()) C.Mute else C.OnInk)
             }
         }

@@ -189,15 +189,16 @@ fun ConversationsScreen(vm: MainVm) {
 @Composable
 fun CockpitScreen(vm: MainVm) {
     val st by vm.h.deepseek.status.collectAsState()
+    val diag by vm.h.deepseek.diag.collectAsState()
     Column(Modifier.fillMaxSize().background(C.Ink)) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 10.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(40.dp).press({ vm.back() }), contentAlignment = Alignment.Center) { Ico(I.Back, 22.dp, C.OnInk) }
             Column(Modifier.weight(1f)) {
                 Text("조종석", style = T.title.copy(color = C.OnInk))
-                Label(when (st) { DeepSeekWeb.Status.READY -> "연결됨 · 직접 입력해도 됩니다"; DeepSeekWeb.Status.LOGIN -> "한 번만 로그인해 주세요"; DeepSeekWeb.Status.CHALLENGE -> "확인을 한 번만 눌러 주세요"; else -> "여는 중" }, color = if (st == DeepSeekWeb.Status.READY) C.OnInkMute else C.Red)
+                Label(when (st) { DeepSeekWeb.Status.READY -> "연결됨 · 직접 입력해도 됩니다"; DeepSeekWeb.Status.LOGIN -> "한 번만 로그인해 주세요 · 끝나면 질문이 이어집니다"; DeepSeekWeb.Status.CHALLENGE -> "확인을 한 번만 눌러 주세요"; DeepSeekWeb.Status.OFFLINE -> "네트워크에 연결할 수 없어요"; else -> diag.ifBlank { "여는 중" } }, color = if (st == DeepSeekWeb.Status.READY) C.OnInkMute else C.Red)
             }
             Text("새 대화", style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.h.deepseek.newChat() }).padding(8.dp))
-            Text("상태 확인", style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.h.deepseek.refreshState() }).padding(8.dp))
+            Text("새로고침", style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.h.deepseek.reload() }).padding(8.dp))
         }
         Text("AI가 지금 쓰는 DeepSeek 화면 그대로입니다. 로그인·확인처럼 사람만 할 수 있는 일은 여기서 하고, 작업 중에는 지켜보거나 직접 개입할 수 있어요.",
             style = T.small.copy(color = C.OnInkMute, fontSize = 12.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))

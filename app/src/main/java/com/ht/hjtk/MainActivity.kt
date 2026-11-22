@@ -23,10 +23,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handle(intent) }
 
-    override fun onResume() {
-        super.onResume()
-        // 포그라운드 복귀 = 재개 시점(부팅 리시버가 아니라). DeepSeek 화면 상태도 확인.
-        Hjtk.get(this).deepseek.let { it.webView(); it.refreshState() }
+    override fun onStart() {
+        super.onStart()
+        // DeepSeek 화면을 앱 화면 '뒤'에 붙인다: 실제 크기로 그려져야 입력창·버튼이 동작한다(첫 프레임 뒤 유휴 시간에 생성)
+        Hjtk.get(this).deepseek.dock(findViewById(android.R.id.content))
+    }
+
+    override fun onStop() {
+        // 액티비티 창에서 떼어 낸다(누수 방지). 진행 중인 답은 투명 창 또는 창 없는 상태에서 계속 받는다.
+        Hjtk.get(this).deepseek.undock()
+        super.onStop()
     }
 
     private fun handle(i: Intent?) {

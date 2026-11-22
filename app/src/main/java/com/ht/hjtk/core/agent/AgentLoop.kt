@@ -63,7 +63,7 @@ class AgentLoop(
             if (!gateControl()) return aborted(step)
             emit(AgentEvent.Sent(clock(), step, prompt.length))
             val reply = try { llm.send(prompt, ctx.jobId, step, newSession) } catch (t: Throwable) {
-                emit(AgentEvent.Note(clock(), "모델 연결 실패: ${t.message}"))
+                emit(AgentEvent.Note(clock(), "${llm.name} 연결 중 문제가 생겼어요(${t.javaClass.simpleName}: ${t.message.orEmpty().lineSequence().firstOrNull().orEmpty().take(90)})"))
                 LlmReply("", "error", false, 0)
             }
             newSession = false

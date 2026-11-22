@@ -7,6 +7,11 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.ht.hjtk.data.JobRec
 import com.ht.hjtk.data.Role
 import com.ht.hjtk.ui.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -61,5 +66,25 @@ class ScreensTest {
     @Test fun s09_onboarding() { vm.go(Route.Onboarding); shot("09_onboarding") { HjtkApp(vm) } }
     @Test fun s10_mail() { vm.go(Route.MailAdd); shot("10_mail") { HjtkApp(vm) } }
     @Test fun s11_conversations() { vm.go(Route.Conversations); shot("11_conversations") { HjtkApp(vm) } }
+    /** 키보드가 열린 상태: 모드 칩 줄·탭 띠가 접히고 입력창이 키보드 바로 위에 붙는다(키보드 영역은 회색 판으로 흉내) */
+    @Test fun s13_keyboard() {
+        vm.draft.value = "이번 주 서울 전시회 3개 추천하고 내 캘린더에"
+        shot("13_keyboard") {
+            androidx.compose.runtime.CompositionLocalProvider(LocalForceIme provides true) {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize()) {
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.weight(1f)) { HjtkApp(vm) }
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxWidth().height(300.dp).background(androidx.compose.ui.graphics.Color(0xFFD9DCE1)))
+                }
+            }
+        }
+    }
+    @Test fun s14_errors() {
+        val c = vm.store.newConversation("연결 문제"); vm.convId.value = c.id
+        vm.store.msg(c.id, Role.USER, "내일 오후 일정 알려줘")
+        vm.store.msg(c.id, Role.SYSTEM, "DeepSeek 로그인이 필요해요. '조종석'을 눌러 한 번만 로그인해 주세요. 로그인을 마치면 이 질문을 자동으로 이어서 보낼게요.", "error", mapOf("via" to "NEEDS_LOGIN", "waiting" to "1"))
+        vm.store.msg(c.id, Role.SYSTEM, "DeepSeek에 연결할 수 없어요. 인터넷 연결을 확인한 뒤 다시 보내 주세요.", "error", mapOf("via" to "OFFLINE"))
+        vm.store.msg(c.id, Role.SYSTEM, "지난번 앱이 예기치 않게 종료됐어요. 같은 문제가 반복되면 아래 내용을 복사해 알려 주세요.\nIllegalStateException: example", "error", mapOf("via" to "CRASH", "detail" to "trace"))
+        shot("14_errors") { HjtkApp(vm) }
+    }
     @Test fun s12_cockpit() { vm.go(Route.Cockpit); shot("12_cockpit") { HjtkApp(vm) } }
 }

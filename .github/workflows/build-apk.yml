@@ -11,6 +11,8 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
+      - name: tap.js stream hook test
+        run: node tools/tap-test.js app/src/main/assets/tap.js
       - name: Unit tests (core engine + rendered screens)
         run: ./gradlew --no-daemon :app:testStandardDebugUnitTest
       - name: Review gate

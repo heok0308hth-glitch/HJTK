@@ -15,12 +15,14 @@ import com.ht.hjtk.core.command.CommandCall
 import com.ht.hjtk.data.JobRec
 import com.ht.hjtk.data.Role
 import com.ht.hjtk.engine.A11yBridge
+import com.ht.hjtk.engine.CrashLog
 import com.ht.hjtk.engine.DeepSeekWeb
 import com.ht.hjtk.engine.Notifier
 import com.ht.hjtk.engine.openCustomTab
 import com.ht.hjtk.service.AgentService
 import com.ht.hjtk.tools.AndroidTools
 import com.ht.hjtk.tools.TapBudget
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +52,8 @@ data class PetCue(val text: String, val kind: Kind, val jobId: String? = null) {
  */
 class JobRunner(private val h: Hjtk) {
     private val store = h.store
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // 어떤 코루틴의 예외도 앱을 죽이지 않는다(기록만 남기고 대화로 알린다)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CrashLog.handler("runner"))
     private val llmLock = Mutex()
     val gate = ApprovalGate()
 
@@ -95,27 +98,56 @@ class JobRunner(private val h: Hjtk) {
     /** 작업마다 DeepSeek 대화방이 따로 있다. 보내기 전에 그 방으로 돌아간다. */
     private inner class JobLlm(private val jobId: String, private val base: LlmPort) : LlmPort {
         override val name = base.name
-        override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply = llmLock.withLock {
+        override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply {
+            var r = once(text, jobId, step, newSession)
+            // 로그인/확인 필요: 조종석에서 끝내면 같은 단계를 자동으로 이어 보낸다(최대 10분). 사람에게 '붙여넣기'를 요구하지 않는다.
+            if (base is DeepSeekWeb && (r.via == "NEEDS_LOGIN" || r.via == "CHALLENGE")) {
+                val j = store.job(this.jobId)
+                val m = j?.let { store.msg(it.convId, Role.SYSTEM, explain(r.via) + " 로그인을 마치면 작업이 자동으로 이어집니다.", "error", mapOf("job" to this.jobId, "via" to r.via, "waiting" to "1")) }
+                store.updateJob(this.jobId) { it.copy(state = "PAUSED_INPUT", label = "DeepSeek 로그인 기다리는 중") }
+                AgentService.update(h.app)
+                pet.tryEmit(PetCue("DeepSeek 로그인이 필요해요", PetCue.Kind.NEED, this.jobId))
+                val ok = withTimeoutOrNull(10 * 60_000L) {
+                    while (base.status.value != DeepSeekWeb.Status.READY) { base.refreshState(); delay(1_500) }
+                    true
+                } ?: false
+                if (j != null && m != null) store.updateMsg(j.convId, m.id) { it.copy(meta = it.meta + ("waiting" to "0")) }
+                store.updateJob(this.jobId) { it.copy(state = "RUNNING", label = if (ok) "로그인 확인 · 재개" else "로그인 대기 시간 초과") }
+                if (ok) r = once(text, jobId, step, newSession)
+                if (r.text.isBlank()) whyEmpty(this.jobId, r.via)
+                return r
+            }
+            if (r.text.isBlank()) whyEmpty(this.jobId, r.via)
+            return r
+        }
+
+        private suspend fun once(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply = llmLock.withLock {
             if (base is DeepSeekWeb && !newSession) base.ensureSession(store.job(this.jobId)?.dsSession)
             store.updateJob(this.jobId) { it.copy(lastPrompt = text.take(20_000)) }
             val r = base.send(text, jobId, step, newSession)
+            // currentUrl()은 메인 스레드에서 기록한 사본이라 어느 스레드에서 읽어도 안전하다
             if (base is DeepSeekWeb) base.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { u -> store.updateJob(this.jobId) { it.copy(dsSession = u) } }
             store.updateJob(this.jobId) { it.copy(via = r.via) }
-            if (r.text.isBlank()) whyEmpty(this.jobId, r.via)
             r
         }
     }
 
     private fun whyEmpty(jobId: String, via: String) {
         val j = store.job(jobId) ?: return
-        val msg = when (via) {
-            "NEEDS_LOGIN" -> "DeepSeek에 로그인이 필요해요. 설정 → AI 연결 → '조종석'에서 한 번만 로그인해 주세요."
-            "CHALLENGE" -> "DeepSeek이 '사람인지' 확인을 요청했어요. 조종석에서 한 번만 확인을 눌러 주세요. 이후에는 앱이 기억합니다."
-            "NOT_READY" -> "DeepSeek 화면이 아직 준비되지 않았어요(네트워크 확인)."
-            "TIMEOUT" -> "답을 기다리다 시간이 지났어요. 답을 복사해 붙여넣거나 공유해 주시면 이어갑니다."
-            else -> "답을 읽지 못했어요($via). 답을 복사해 붙여넣거나 'HJTK로 공유' 해 주세요."
-        }
-        store.msg(j.convId, Role.SYSTEM, msg, "error", mapOf("job" to jobId, "via" to via))
+        store.msg(j.convId, Role.SYSTEM, explain(via), "error", mapOf("job" to jobId, "via" to via))
+    }
+
+    /** 실패 경로 코드 → 사람이 할 수 있는 다음 행동 한 문장 */
+    fun explain(via: String): String = when {
+        via == "NEEDS_LOGIN" -> "DeepSeek 로그인이 필요해요. '조종석'을 눌러 한 번만 로그인해 주세요."
+        via == "CHALLENGE" -> "DeepSeek이 '사람인지' 확인을 요청했어요. 조종석에서 한 번만 눌러 주세요. 이후에는 앱이 기억합니다."
+        via == "OFFLINE" -> "DeepSeek에 연결할 수 없어요. 인터넷 연결을 확인한 뒤 다시 보내 주세요."
+        via == "NOT_READY" -> "DeepSeek 화면이 아직 열리지 않았어요. 조종석에서 화면이 뜨는지 확인해 주세요."
+        via == DeepSeekWeb.VIA_GONE -> "휴대폰 메모리가 부족해 DeepSeek 화면이 닫혔어요. 다시 열어 두었으니 한 번 더 보내 주세요."
+        via.startsWith("INPUT_") -> "DeepSeek 입력창을 찾지 못했어요(${via.removePrefix("INPUT_")}). 조종석에서 화면을 확인해 주세요."
+        via == "TIMEOUT" -> "답을 기다리다 시간이 지났어요. 답을 복사해 붙여넣거나 'HJTK로 공유' 해 주시면 이어갑니다."
+        via == "EXCEPTION" -> "보내는 중 문제가 생겼어요. 다시 보내 주세요."
+        else -> "답을 읽지 못했어요($via). 조종석에서 답이 보이면 복사해 붙여넣거나 'HJTK로 공유' 해 주세요."
     }
 
     // ── 작업 시작/재개 ──────────────────────────────────────────
@@ -348,24 +380,42 @@ class JobRunner(private val h: Hjtk) {
     fun quickAsk(convId: String, text: String) {
         busyQuick.update { it + convId }
         scope.launch {
-            try {
-                val base = port()
-                val conv = store.conversations.value.firstOrNull { it.id == convId }
-                val r = llmLock.withLock {
-                    val fresh = conv?.dsSession == null
-                    if (base is DeepSeekWeb && !fresh) base.ensureSession(conv?.dsSession)
-                    val rr = base.send(text, convId, 1, fresh)
-                    if (base is DeepSeekWeb) base.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { u -> store.updateConversation(convId) { it.copy(dsSession = u) } }
-                    rr
-                }
-                if (r.text.isNotBlank()) store.msg(convId, Role.AI, r.text, "text", mapOf("via" to r.via))
-                else store.msg(convId, Role.SYSTEM, when (r.via) {
-                    "NEEDS_LOGIN" -> "DeepSeek 로그인이 필요해요. 위의 'DeepSeek' 표시를 눌러 조종석에서 한 번만 로그인해 주세요."
-                    "CHALLENGE" -> "DeepSeek이 확인을 요청했어요. 조종석에서 한 번만 눌러 주세요."
-                    else -> "답을 받지 못했어요(${r.via}). 조종석에서 확인하거나 답을 공유해 주세요."
-                }, "error", mapOf("via" to r.via))
+            try { askOnce(convId, text, waitForLogin = true) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Throwable) {
+                CrashLog.record(e, "quickAsk")
+                store.msg(convId, Role.SYSTEM, explain("EXCEPTION") + " (${e.javaClass.simpleName})", "error", mapOf("via" to "EXCEPTION"))
             } finally { busyQuick.update { it - convId } }
         }
+    }
+
+    private suspend fun askOnce(convId: String, text: String, waitForLogin: Boolean) {
+        val base = port()
+        val r = withTimeoutOrNull(8 * 60_000L) {
+            llmLock.withLock {
+                val conv = store.conversations.value.firstOrNull { it.id == convId }
+                val fresh = conv?.dsSession == null
+                if (base is DeepSeekWeb && !fresh) base.ensureSession(conv?.dsSession)
+                val rr = base.send(text, convId, 1, fresh)
+                if (base is DeepSeekWeb) base.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { u -> store.updateConversation(convId) { it.copy(dsSession = u) } }
+                rr
+            }
+        } ?: LlmReply("", "TIMEOUT", false, 0)
+        if (r.text.isNotBlank()) { store.msg(convId, Role.AI, r.text, "text", mapOf("via" to r.via)); return }
+
+        // 로그인/확인이 필요하면: 조종석에서 끝내는 순간 같은 질문을 자동으로 이어 보낸다(최대 10분)
+        if (waitForLogin && base is DeepSeekWeb && (r.via == "NEEDS_LOGIN" || r.via == "CHALLENGE")) {
+            val m = store.msg(convId, Role.SYSTEM, explain(r.via) + " 로그인을 마치면 이 질문을 자동으로 이어서 보낼게요.", "error", mapOf("via" to r.via, "waiting" to "1"))
+            val ok = withTimeoutOrNull(10 * 60_000L) {
+                while (base.status.value != DeepSeekWeb.Status.READY) { base.refreshState(); delay(1_500) }
+                true
+            } ?: false
+            store.updateMsg(convId, m.id) { it.copy(meta = it.meta + ("waiting" to "0")) }
+            if (ok) { store.msg(convId, Role.SYSTEM, "로그인을 확인했어요 · 이어서 보냅니다", "note"); askOnce(convId, text, waitForLogin = false) }
+            else store.msg(convId, Role.SYSTEM, "로그인을 10분 기다렸어요. 로그인한 뒤 다시 보내 주세요.", "error", mapOf("via" to r.via))
+            return
+        }
+        store.msg(convId, Role.SYSTEM, explain(r.via), "error", mapOf("via" to r.via))
     }
 
     /** 사용자가 직접 실행하는 명령(/슬래시, 명령어 사전의 '실행') */

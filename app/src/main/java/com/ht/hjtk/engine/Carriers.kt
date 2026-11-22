@@ -43,9 +43,10 @@ object Http {
             val loc = if (code in 300..399 && hops < 5) c.getHeaderField("Location") else null
             if (loc != null) { u = URL(u, loc); hops++; c.disconnect(); continue }
             val stream = (if (code >= 400) c.errorStream else c.inputStream) ?: return@withContext Resp(code, "", u.toString(), c.contentType ?: "")
+            var cut = false
             val raw = (if (c.contentEncoding == "gzip") GZIPInputStream(stream) else stream).use { s ->
                 val out = ByteArrayOutputStream(); val buf = ByteArray(16384); var total = 0
-                while (true) { val n = s.read(buf); if (n < 0 || total > max) break; out.write(buf, 0, n); total += n }
+                while (true) { val n = s.read(buf); if (n < 0) break; if (total > max) { cut = true; break }; out.write(buf, 0, n); total += n }
                 out.toByteArray()
             }
             val ct = c.contentType ?: ""
@@ -53,7 +54,8 @@ object Http {
                 ?: Regex("<meta[^>]+charset=[\"']?([\\w-]+)", RegexOption.IGNORE_CASE).find(String(raw, 0, minOf(raw.size, 3000), Charsets.ISO_8859_1))?.groupValues?.get(1)
                 ?: "UTF-8"
             val text = runCatching { String(raw, charset(cs)) }.getOrDefault(String(raw))
-            c.disconnect()
+            // 끝까지 읽은 연결은 끊지 않는다 → 같은 호스트 재요청 때 TLS 핸드셰이크 생략(keep-alive 풀 재사용)
+            if (cut) c.disconnect()
             return@withContext Resp(code, text, u.toString(), ct)
         }
         @Suppress("UNREACHABLE_CODE") Resp(0, "", url, "")

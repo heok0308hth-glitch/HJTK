@@ -128,6 +128,13 @@ fun SignalDot(color: Color = C.Red, size: Dp = 7.dp, pulse: Boolean = false) {
 /** 테스트에서 무한 애니메이션을 끄기 위한 전역 스위치 */
 object Motion { var enabled = true }
 
+/** 화면 캡처 테스트에서 '키보드 열림' 레이아웃을 강제로 그리기 위한 스위치 */
+val LocalForceIme = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/** 키보드가 실제로 화면을 차지하고 있는가(높이 > 0). 플래그가 아니라 높이로 판단해야 기기마다 일관된다. */
+@Composable
+fun imeOpen(): Boolean = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0 || LocalForceIme.current
+
 @Composable
 fun InkButton(text: String, modifier: Modifier = Modifier, accent: Boolean = false, onClick: () -> Unit) {
     Box(modifier.clip(RoundedCornerShape(6.dp)).background(if (accent) C.Red else C.Ink).press(onClick).padding(horizontal = 18.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {

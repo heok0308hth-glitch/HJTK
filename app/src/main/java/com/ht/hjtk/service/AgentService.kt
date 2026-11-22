@@ -48,7 +48,7 @@ import kotlin.random.Random
  * 다른 앱 위 표시 권한이 있으면 마스코트 '쥬티'가 화면을 돌아다니며 5분 보고를 전한다.
  */
 class AgentService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + com.ht.hjtk.engine.CrashLog.handler("service"))
     private var mascot: Mascot? = null
     private var idleSince = 0L
     private var lastCueAt = 0L
@@ -119,7 +119,7 @@ class Mascot(private val svc: Service) : View(svc) {
     private val cat = (78 * d).toInt()
     private val bubbleW = (220 * d).toInt()
     private val bubbleH = (86 * d).toInt()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + com.ht.hjtk.engine.CrashLog.handler("service"))
 
     private enum class Anim(val row: Int, val fps: Int, val loop: Boolean) {
         IDLE(0, 5, true), RUN_R(1, 12, true), RUN_L(2, 12, true), WAVE(3, 6, true), JUMP(4, 10, false), SLEEP(5, 3, true),
@@ -183,7 +183,9 @@ class Mascot(private val svc: Service) : View(svc) {
     private suspend fun tick() {
         var acc = 0L
         while (true) {
-            delay(40); acc += 40
+            // 움직이거나 말풍선이 있을 때만 25fps. 가만히 있을 땐 다음 프레임까지 잔다(배터리)
+            val step = if (targetX >= 0 || bubble != null) 40L else (1000L / anim.fps).coerceAtLeast(40L)
+            delay(step); acc += step
             if (bubble != null && System.currentTimeMillis() > bubbleUntil) { bubble = null; resize() }
             // 이동
             if (targetX >= 0) {

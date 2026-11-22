@@ -45,9 +45,16 @@ class Hjtk(val app: Context) {
 class HjtkApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        com.ht.hjtk.engine.CrashLog.install(this)
         Notifier.channels(this)
         AppVisibility.install()
-        Hjtk.get(this).runner   // 중단된 작업 표시
+        val h = Hjtk.get(this)
+        h.runner   // 중단된 작업 표시
+        // 지난 실행이 비정상 종료였다면, 원인을 가장 최근 대화에 한 번 보여 준다(사용자가 그대로 복사해 전달할 수 있게)
+        com.ht.hjtk.engine.CrashLog.takeLastCrash(this)?.let { full ->
+            val conv = h.store.conversations.value.maxByOrNull { it.updatedAt }?.id
+            if (conv != null) h.store.msg(conv, com.ht.hjtk.data.Role.SYSTEM, "지난번 앱이 예기치 않게 종료됐어요. 같은 문제가 반복되면 아래 내용을 복사해 알려 주세요.\n" + com.ht.hjtk.engine.CrashLog.summary(full), "error", mapOf("via" to "CRASH", "detail" to full.take(6000)))
+        }
         runCatching {
             WorkManager.getInstance(this).enqueueUniquePeriodicWork("hjtk.resume-check", ExistingPeriodicWorkPolicy.KEEP,
                 PeriodicWorkRequestBuilder<ResumeCheckWorker>(15, TimeUnit.MINUTES).build())

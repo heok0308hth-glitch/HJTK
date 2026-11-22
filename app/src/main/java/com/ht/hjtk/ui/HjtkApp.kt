@@ -35,7 +35,9 @@ fun HjtkApp(vm: MainVm) {
     HjtkTheme {
         Box(Modifier.fillMaxSize().background(C.Paper)) {
             val tabbed = route in listOf(Route.Chat, Route.Tasks, Route.Hub, Route.Tools)
-            Column(Modifier.fillMaxSize()) {
+            val ime = imeOpen()
+            // 키보드 높이는 여기서 한 번만 뺀다. 자식의 navigationBarsPadding은 키보드가 덮은 만큼 자동으로 0이 된다.
+            Column(Modifier.fillMaxSize().imePadding()) {
                 Box(Modifier.weight(1f)) {
                     when (val r = route) {
                         Route.Chat -> ChatScreen(vm)
@@ -53,8 +55,11 @@ fun HjtkApp(vm: MainVm) {
                         is Route.PipelineEdit -> PipelineEditScreen(vm, r.id)
                     }
                 }
-                if (tabbed && route != Route.Chat) BottomBar(vm, route, pending.size)
-                else if (route == Route.Chat) BottomBarSlim(vm, pending.size)
+                // 타이핑 중에는 탭을 숨긴다: 입력창이 키보드 바로 위에 붙어야 대화가 가장 많이 보인다
+                if (!ime) {
+                    if (tabbed && route != Route.Chat) BottomBar(vm, route, pending.size)
+                    else if (route == Route.Chat) BottomBarSlim(vm, pending.size)
+                }
             }
             if (palette) Palette(vm)
         }

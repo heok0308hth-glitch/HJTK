@@ -12,8 +12,8 @@ android {
         applicationId = "com.ht.hjtk"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.1.0"
     }
 
     signingConfigs {
@@ -53,7 +53,9 @@ android {
 
     packaging {
         resources {
-            excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.md", "META-INF/mailcap*", "META-INF/javamail*")
+            excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.md")
+            // mailcap·javamail.* 는 지우면 안 된다: 메일 본문 인코딩(DataContentHandler)이 이 파일로 등록된다
+            pickFirsts += setOf("META-INF/mailcap", "META-INF/mailcap.default", "META-INF/javamail.providers", "META-INF/javamail.default.providers", "META-INF/javamail.address.map", "META-INF/javamail.charset.map", "META-INF/mimetypes.default")
         }
     }
 

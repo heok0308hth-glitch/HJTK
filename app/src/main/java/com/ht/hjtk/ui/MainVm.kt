@@ -45,7 +45,7 @@ class MainVm(val h: Hjtk) {
     val runner = h.runner
     val route = MutableStateFlow<Route>(if (store.settings.value.onboarded) Route.Chat else Route.Onboarding)
     private val back = ArrayDeque<Route>()
-    val convId = MutableStateFlow(store.conversations.value.firstOrNull()?.id ?: store.newConversation().id)
+    val convId = MutableStateFlow((store.conversations.value.firstOrNull()?.id ?: store.newConversation().id).also { store.ensureLoaded(it) })
     val mode = MutableStateFlow(if (store.settings.value.defaultMission) Mode.MISSION else Mode.AUTO)
     val draft = MutableStateFlow("")
     val paletteOpen = MutableStateFlow(false)
@@ -54,7 +54,7 @@ class MainVm(val h: Hjtk) {
     fun back(): Boolean { val r = back.removeLastOrNull() ?: return false; route.value = r; return true }
     fun tab(r: Route) { back.clear(); route.value = r }
 
-    fun openConversation(id: String) { convId.value = id; tab(Route.Chat) }
+    fun openConversation(id: String) { store.ensureLoaded(id); convId.value = id; tab(Route.Chat) }
     fun newChat() { val c = store.newConversation(); convId.value = c.id; tab(Route.Chat) }
 
     fun send(text0: String) {
@@ -78,6 +78,16 @@ class MainVm(val h: Hjtk) {
         }
     }
 
+    /** 오류 카드의 '다시 보내기': 마지막 질문을 같은 대화에 다시 보낸다(사용자 말풍선은 중복으로 만들지 않는다) */
+    fun retryLast() {
+        val cid = convId.value
+        if (cid in runner.busyQuick.value) return
+        store.ensureLoaded(cid)
+        val last = store.messages.value[cid]?.lastOrNull { it.role == Role.USER } ?: return
+        val text = last.meta["expanded"] ?: last.text
+        if (last.meta["mission"] == "true") runner.startMission(cid, text) else runner.quickAsk(cid, text)
+    }
+
     fun runCommand(call: CommandCall) { store.msg(convId.value, Role.USER, "/${call.cmd} " + call.args.values.joinToString(" ")); runner.runDirect(convId.value, call); tab(Route.Chat) }
     fun runPipeline(p: Pipeline, input: String) { store.msg(convId.value, Role.USER, "▶ ${p.name} ${input}"); runner.runPipeline(convId.value, p, input); tab(Route.Chat) }
 
@@ -88,6 +98,7 @@ class MainVm(val h: Hjtk) {
 
     // ── 내보내기(기본 마스킹) ───────────────────────────────────
     fun export(ctx: Context, c: Conversation, fmt: String, mask: Boolean = true) {
+        store.ensureLoaded(c.id)
         val msgs = store.messages.value[c.id] ?: emptyList()
         val df = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.KOREA)
         fun m(s: String) = if (mask) Masker.mask(s) else s

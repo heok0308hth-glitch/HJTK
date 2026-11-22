@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** 자체 라인 아이콘(24 그리드, 1.6 스트로크). 머티리얼 기본 아이콘을 쓰지 않는다. */
-enum class I { Chat, Tasks, Hub, Tools, Send, Plus, Slash, Pause, Play, Stop, Check, Close, Gear, Mail, Globe, Cal, File, Spark, Paw, Chevron, Back, Search, Pin, Export, Trash, Eye, Bell, Menu, Key, Link, Flow, Up }
+enum class I { Chat, Tasks, Hub, Tools, Send, Plus, Slash, Pause, Play, Stop, Check, Close, Gear, Mail, Globe, Cal, File, Spark, Paw, Chevron, Back, Search, Pin, Export, Trash, Eye, Bell, Menu, Key, Link, Flow, Up, Down }
 
 @Composable
 fun Ico(i: I, size: Dp = 22.dp, color: Color = Color(0xFF121212), modifier: Modifier = Modifier) {
@@ -35,6 +35,7 @@ fun Ico(i: I, size: Dp = 22.dp, color: Color = Color(0xFF121212), modifier: Modi
             I.Tools -> { rect(3.5f, 3.5f, 17f, 17f, 3f); line(14f, 7.5f, 10f, 16.5f) }
             I.Send -> { line(12f, 19f, 12f, 5f); drawPath(p(6f, 11f, 12f, 5f, 18f, 11f), color, style = st) }
             I.Up -> { drawPath(p(6f, 14f, 12f, 8f, 18f, 14f), color, style = st) }
+            I.Down -> { line(12f, 5f, 12f, 19f); drawPath(p(6f, 13f, 12f, 19f, 18f, 13f), color, style = st) }
             I.Plus -> { line(12f, 5f, 12f, 19f); line(5f, 12f, 19f, 12f) }
             I.Slash -> { line(15f, 4f, 9f, 20f) }
             I.Pause -> { line(9f, 6f, 9f, 18f); line(15f, 6f, 15f, 18f) }

@@ -153,7 +153,7 @@ object A11yBridge {
  * 그 외 이벤트는 버린다. 키 입력·비밀번호 필드는 읽지 않는다.
  */
 class HjtkAccessibility : AccessibilityService() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CrashLog.handler("platform"))
     private var pending: Job? = null
     private var lastText = ""; private var stableSince = 0L
 
