@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -78,7 +79,7 @@ fun CommandPaletteDialog(vm: HjtkViewModel, onDismiss: () -> Unit) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("palette-search"),
                 placeholder = { Text("명령 검색", style = MaterialTheme.typography.bodyMedium, color = Hjtk.palette.inkSoft) },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Hjtk.palette.inkSoft) },
                 shape = RoundedCornerShape(14.dp),

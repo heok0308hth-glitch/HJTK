@@ -176,9 +176,12 @@ answer is marked less trustworthy than one confirmed by the stream.
 
 * **Journal** — one line per transition, each line hashing the previous one.
   `verify()` detects edits, truncation and out-of-order records.
-* **Resume** — `plan_started` without `plan_finished` is found on startup; step
-  results are checkpointed in private storage so a resumed plan does not resend
-  a mail or relaunch an app.
+* **Resume** — `plan_started` without `plan_finished` is found on startup, the
+  plan definition is reloaded from its archive, and step results come from the
+  checkpoint, so a resumed plan does not resend a mail or relaunch an app. A step
+  that was mid-flight when the process died asks for approval again.
+* **Journal integrity** — every append is fsynced; a half-written final line is
+  truncated at the last complete record on load and the chain keeps going.
 * **ETA** — per-command EWMA with a sample count; promises get more accurate the
   more you use the app.
 * **Honest failure** — every command returns `Ok`, `NeedInput` or `Failed`.
@@ -191,7 +194,7 @@ answer is marked less trustworthy than one confirmed by the stream.
 Requires JDK 17 and Android SDK 35 (CI does this for you).
 
 ```bash
-./gradlew testDebugUnitTest    # 100+ unit + Robolectric tests
+./gradlew testDebugUnitTest    # 116 unit, Robolectric and Compose UI tests
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew lintDebug
 ```
@@ -209,6 +212,8 @@ The test suite covers, among others:
 | RRE | incremental, cumulative, overlapping and conflicting streams |
 | Concurrency | three plans overlap, a fourth queues, cancelling one leaves the others intact, same-resource steps serialise |
 | Android runtime (Robolectric) | engine composition root builds, secrets round-trip, files are written inside app storage, notifications work |
+| UI (Compose + Robolectric) | every tab opens its own screen, the command palette opens and filters, a typed request reaches the store end to end, an approval card can be cancelled, an unknown request starts no plan |
+| Recovery | a plan interrupted by process death is archived and resumed from its checkpoint; a torn journal line is truncated and the chain continues |
 
 ---
 

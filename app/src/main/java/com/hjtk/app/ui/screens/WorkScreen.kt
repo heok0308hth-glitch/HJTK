@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,7 +54,7 @@ import com.hjtk.app.ui.theme.Hjtk
 
 @Composable
 fun WorkScreen(vm: HjtkViewModel) {
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember { mutableIntStateOf(0) }
     var expanded by remember { mutableStateOf<String?>(null) }
     var showBuilder by remember { mutableStateOf(false) }
     val pipelines = vm.pipelines()
@@ -235,7 +236,7 @@ private fun PipelineBuilderDialog(
     var description by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     val chosen = remember { mutableListOf<SkillStep>() }
-    var refresh by remember { mutableStateOf(0) }
+    var refresh by remember { mutableIntStateOf(0) }
     val results = remember(query, refresh) { vm.commands(query).take(12) }
 
     Dialog(onDismissRequest = onDismiss) {

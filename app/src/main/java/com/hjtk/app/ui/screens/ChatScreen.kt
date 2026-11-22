@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -320,7 +321,7 @@ fun Composer(
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).testTag("composer"),
                 placeholder = { Text("무엇을 할까요?", style = MaterialTheme.typography.bodyLarge, color = Hjtk.palette.inkSoft) },
                 shape = RoundedCornerShape(22.dp),
                 maxLines = 5,

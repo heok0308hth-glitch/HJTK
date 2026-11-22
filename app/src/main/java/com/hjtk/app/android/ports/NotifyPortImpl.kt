@@ -69,7 +69,11 @@ class NotifyPortImpl(private val context: Context) : NotifyPort {
             .setAutoCancel(true)
             .setContentIntent(open)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(id, notification) }
+        try {
+            NotificationManagerCompat.from(context).notify(id, notification)
+        } catch (e: SecurityException) {
+            // POST_NOTIFICATIONS was revoked between the check and this call.
+        }
     }
 
     override suspend fun scheduleTimer(label: String, seconds: Int): Unit = withContext(Dispatchers.Main) {
@@ -88,7 +92,7 @@ class NotifyPortImpl(private val context: Context) : NotifyPort {
         // back to an inexact alarm instead of throwing SecurityException — the
         // reminder may land a little late on a dozing device, which is honest.
         val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
-        if (canExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (canExact) {
             runCatching { am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending) }
                 .onFailure { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending) }
         } else {

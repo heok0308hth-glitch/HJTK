@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,7 +55,7 @@ fun MainScreen(
     headerExtra: (@Composable () -> Unit)? = null,
     developerSlot: (@Composable () -> Unit)? = null
 ) {
-    var tab by remember(startTab) { mutableStateOf(startTab.coerceIn(0, TABS.lastIndex)) }
+    var tab by remember(startTab) { mutableIntStateOf(startTab.coerceIn(0, TABS.lastIndex)) }
     var palette by remember { mutableStateOf(false) }
     var sessions by remember { mutableStateOf(false) }
 
