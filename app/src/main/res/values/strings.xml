@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">HJTK</string>
+    <string name="a11y_desc">HJTK 화면 읽기: Gemini·DeepSeek 앱의 답을 자동으로 가져오고, 사용자가 \'이 화면 보내기\'를 눌렀을 때만 현재 화면의 글자를 읽습니다. 비밀번호 칸은 읽지 않으며, 키 입력 기록·상시 감시를 하지 않습니다.</string>
+    <string name="share_label">HJTK로 보내기</string>
 </resources>

@@ -1,242 +1,81 @@
 # HJTK
 
-[![Android CI](https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml/badge.svg)](https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml)
+> **Don't make tool, make innovation.**
+> AI를 넣지 않은 AI 비서. 이미 폰에 있는 DeepSeek·Gemini를 지휘하는 개인용 오케스트레이션 플랫폼.
 
-**A deterministic AI orchestration toolkit for Android.**
-No on-device model, no mandatory API key, no screenshot-and-tap loop.
-
-HJTK turns what you type into a **typed, auditable plan**, shows exactly what will
-leave the phone, runs it, and keeps a crash-proof journal so nothing is silently
-lost. AI models are an *optional* dependency, reached through one small carrier
-interface — the app itself is a rules engine.
+HJTK 안에는 생성형 모델이 **한 바이트도 없습니다**. 대신 명령어 150개가 있습니다.
+사용자가 자연어로 일을 맡기면 → DeepSeek이 계획하고 명령을 고르고 → HJTK가 명령을 실행해 결과를 돌려주고 → 필요하면 Gemini가 교차 검토하고 → 5분마다 보고하고 → 결과물과 작업 기록을 남깁니다. 밖으로 나가는 일(메일 발송·공유·삭제)은 **'실행' 버튼으로 허락**을 받습니다.
 
 ```
-사용자: "안드로이드 15 검색해서 요약해줘"
-HJTK  : search.web → ai.summarize
-         → 계획 카드: 2단계 · 예상 9초
-         → [실행] [취소]
+사용자 ──자연어──▶ HJTK ──AEP-1 봉투──▶ DeepSeek(앱 안 WebView, 키 없음)
+                    ▲                         │ 계획 + 명령(JSON)
+                    │                         ▼
+              5분 보고·허락 카드      명령어 150개 실행(웹검색·메일·캘린더·파일…)
+                    │                         │ 결과
+                    └──────── 저널(해시 체인) ◀┘      Gemini(앱/웹, 공유 1탭) = 검토자
 ```
 
----
+## 양방향 통신 문제를 어떻게 풀었나
 
-## Why this exists
+Android에는 "다른 앱에 보낸 요청의 답을 돌려받는" 계약이 없습니다. HJTK는 답이 돌아올 수 있는 길을 **여러 개 동시에** 열고, 받은 것은 '후보'로만 다룹니다.
 
-Most Android "agents" work like this: take a screenshot, send it to a vision
-model, ask for tap coordinates, tap, repeat. That loop is expensive (a model
-call per step), slow (seconds per tap), brittle (one mis-parsed screen and the
-run is lost), and impossible to audit afterwards.
-
-HJTK takes the opposite approach:
-
-| | Screenshot + VLM agents | **HJTK** |
+| 대상 | 기본 경로(키 없음) | 답이 돌아오는 길 |
 |---|---|---|
-| Where the model runs | cloud vision model per step | **none on device**; the model is only an optional text endpoint |
-| Cost per task | one inference per tap | **0 for the 64 built-in commands**, 1 call for a written answer |
-| Latency per step | 1–4 s (screenshot → model → tap) | **200–900 ms** for local commands |
-| Failure mode | wrong tap, no recovery | **typed DAG + journal + resume** from the last good step |
-| Auditability | none | **hash-chained journal** of every transition |
-| Side effects | happen implicitly | **blocked behind an approval card** unless the user taps 실행 |
-| Determinism | sampling | **same text + same catalog = same plan** (router is unit-tested) |
-| Multi-step | N round trips | **one AEP-1 envelope can carry a whole plan** |
-| Keys | API key is mandatory | **works with no key**; keys are optional accelerators |
+| **DeepSeek** | 앱 안 WebView에 `chat.deepseek.com` 1회 로그인 | 페이지 자신의 `fetch` 스트림을 `res.clone()`으로 tee → SSE·JSON-패치 해석(P0) → DOM(P1) → 복사 후킹(P4) |
+| DeepSeek 앱 | `ACTION_SEND` | 화면 읽기(접근성) · 공유 → HJTK · 텍스트 선택(PROCESS_TEXT) |
+| **Gemini** | Gemini 앱 / 브라우저(WebView 로그인은 Google 정책상 불가) | 화면 읽기 · 공유 1탭 · 붙여넣기 |
+| (선택) API 키 | DeepSeek·Gemini 공식 API | HTTP 응답 |
 
-The result is an app you can leave running: it either does a small thing
-instantly, or tells you honestly why it could not.
+- **AEP-1 봉투**: 모든 요청에 작업 ID(Crockford 11자, 체크섬)를 싣고, 응답은 7단계 복구 사다리로 읽습니다. 5단계 이하로 복구된 응답의 명령은 실행하지 않고 형식을 다시 요청합니다.
+- **DeepSeek 웹 API를 재구현하지 않습니다.** PoW·쿠키·봇 검사는 페이지가 직접 풀고, HJTK는 관찰만 합니다. `navigator.webdriver` 위조, 캡차 자동 통과, 네트워크 폴링을 하지 않습니다.
+- 외부 비평(Gemini)은 작업당 사람 손이 최대 2번만 들도록 제한했습니다. 받지 못하면 "외부 비평 미실시"라고 적습니다.
 
----
+## 주요 기능
 
-## Architecture
+- **대화 / 작업 맡기기**: 자동 판별, 새 대화, 대화 검색·고정, 대화 내보내기(MD·HTML·JSON, 키·토큰 자동 마스킹)
+- **장기 작업**: 지금·다음·남은 시간(구간 ETA), 일시정지·재개·중지, 앱이 죽어도 '멈춤'으로 남아 재개 가능
+- **5분 보고**: 시간이 아니라 '변화'를 보고합니다. 늦으면 늦었다고 씁니다
+- **허락 게이트**: 지문 대신 '실행' 버튼. 승인은 다이제스트(SHA-256, 정규화 JSON)에 묶인 1회용 토큰이라 승인 뒤 인자가 바뀌면 실행되지 않습니다. 처음 보내는 주소·링크 포함은 경고와 함께 표시됩니다
+- **연동 센터**(서버·OAuth 없이): Gmail·네이버·다음·카카오·iCloud 메일(IMAP/SMTP 앱 비밀번호), 구글 캘린더(기기 동기화), 연락처, 구글 드라이브·파일(시스템 선택기), 네이버·DuckDuckGo·Bing·위키·구글 뉴스 검색, 날씨·미세먼지·환율·공휴일(키 없는 공개 API)
+- **Personal Hub**: 즐겨찾는 사이트·자주 쓰는 앱·연결된 메일·고정 파일·작업 공간·사용자 명령어(`/아침` 같은 단축)·기억
+- **파이프라인**: 명령을 이어 붙이는 자동화. 밖으로 나가는 단계 앞에 승인 단계를 **자동 삽입**
+- **스킬**: 코드가 아니라 지침. AI가 제안하면 사용자가 저장 여부를 정함
+- **기억**: 신경망 없이 BM25(한글 2-gram)로 검색
+- **조종석**: AI가 쓰는 DeepSeek 화면을 그대로 보고 직접 조작
+- **화면 공유 도움**: AI가 요청하면, 도움이 필요한 화면을 띄우고 펫을 누르면 그 화면의 글자가 AI에게 갑니다(접근성 켜짐 시)
+- **펫 '쥬티'**: 앱 밖에서 작업 중일 때 화면을 돌아다니며 보고를 말풍선으로 전함. 켜고 끌 수 있음
 
-```mermaid
-flowchart TD
-    U[User text] --> R[NLU Router<br/>deterministic]
-    R -->|Command / Skill / Pipeline| C[Plan Compiler<br/>typed DAG]
-    R -->|cannot route| S[Suggestions<br/>never guesses]
-    C --> E[Executor]
-    E --> G{Approval gate<br/>EXTERNAL / SPEND / DESTRUCTIVE}
-    G -->|실행| X[Command]
-    G -->|취소| Z[Cancelled, zero effects]
-    X --> J[(Journal<br/>hash chain)]
-    E --> J
-    J --> RS[Resume after process death]
-    E --> RP[Progress reports + ETA]
-    X --> H[HostPorts<br/>files · web · mail · calendar · apps · device]
-    R --> SK[Skills / Pipelines<br/>declarative JSON]
-    AI[AI carrier<br/>optional] -.-> X
-```
-
-### Layers and their responsibilities
-
-| Layer | Lives in | Contract |
-|---|---|---|
-| Router | `core/nlu` | text → route; deterministic; every case covered by a test |
-| Compiler | `core/plan/PlanCompiler` | declarations → validated DAG (`{{out:N}}`, `{{var:name}}`, cycle checks) |
-| Executor | `core/plan/Executor` | the only place a side effect can start; approval, journal, checkpoint |
-| Journal | `core/plan/Journal` | append-only, SHA-256 chained, detects truncation and edits |
-| Stores | `core/memory`, `core/skill`, `core/session`, `core/hub` | JSON persistence, no AI, no embeddings |
-| Ports | `core/HostPorts` | every outside capability behind one interface |
-| Android ports | `android/ports` | real implementations (OkHttp, IMAP/SMTP, CalendarContract, Intents…) |
-| Carriers | `android/carrier` | model access as an optional, replaceable plug |
-| UI | `ui/` | Compose; chat, hub, work, settings, command palette |
-| Orchestrator | `core/orchestrator` | conversation + concurrent jobs (max 3) + per-job approval/cancel |
-
-### Concurrency without lies
-
-Up to three independent plans run at once. A step that would collide with
-another job — the same model session, the same mail account, the system UI
-(only one chooser can be on screen) — takes a `ResourceGuard` lock for that
-step only. Local commands, web fetches and reads run in parallel.
-
-```
-job A: calendar.today ──► ok ──► ok
-job B: search.web ──► ai.summarize (waits for carrier lock) ──► file.export
-job C: device.battery ──► ok
-```
-
-Every job has its own id, progress, ETA, approval prompt, cancel handle and
-checkpoint file. Stopping one never touches another.
-
----
-
-## The command catalog (64 commands)
-
-Adding a capability is one declaration plus one lambda — no changes to the
-router, planner, UI or approval logic.
-
-```kotlin
-reg.register(
-    CommandSpec(
-        id = "calendar.today",
-        labelKo = "오늘 일정",
-        category = CommandCategory.CALENDAR,
-        effect = EffectClass.READ,
-        description = "오늘의 캘린더 일정을 읽습니다.",
-        keywords = listOf("일정", "오늘", "스케줄")
-    )
-) { _, ports ->
-    CommandResult.Ok(ports.calendar.today().joinToString("\n") { it.title })
-}
-```
-
-| Category | Commands |
-|---|---|
-| 검색 (5) | `search.web` `search.news` `search.wiki` `search.images` `search.open_url` |
-| 파일 (5) | `file.export_text` `file.export_session` `file.list_exports` `file.open_folder` `file.share_export` |
-| 메일 (5) | `mail.status` `mail.unread` `mail.latest` `mail.compose` `mail.send` |
-| 일정 (3) | `calendar.today` `calendar.new_event` `calendar.open` |
-| 앱 (9) | `app.open` `app.list` `app.share` `app.custom_tab` `app.dial` `app.sms` `app.map` `app.store_search` `app.save_to_hub` |
-| 파이프라인 (4) | `pipeline.list` `pipeline.run` `pipeline.status` `pipeline.stop` |
-| 스킬 (3) | `skill.list` `skill.run` `skill.create` |
-| 메모리 (4) | `memory.remember` `memory.recall` `memory.list` `memory.forget` |
-| 클립보드 (2) | `clip.copy` `clip.read` |
-| 알림 (3) | `notify.show` `notify.timer` `notify.alarm` |
-| 디바이스 (6) | `device.battery` `device.storage` `device.network` `device.volume` `device.brightness` `device.torch` |
-| AI (9) | `ai.ask` `ai.deepseek` `ai.gemini` `ai.summarize` `ai.translate` `ai.rewrite` `ai.compare` `ai.status` `ai.page_summary` |
-| 허브 (3) | `hub.list` `hub.open` `hub.add` |
-| 시스템 (6) | `system.settings` `system.diagnostics` `system.export_diagnostics` `system.help` `system.about` `system.speak` |
-
-Commands declare an **effect class**; anything at `EXTERNAL` or above stops for
-the approval card first:
-
-| Effect | Meaning | Approval |
-|---|---|---|
-| `READ` | reads local state or the network | no |
-| `LOCAL_WRITE` | writes only inside HJTK | no |
-| `EXTERNAL` | leaves the app under your name (mail, share, dial, calendar) | **yes** |
-| `SPEND` | costs money or a metered quota | **yes** |
-| `DESTRUCTIVE` | cannot be undone | **yes** |
-
----
-
-## AEP-1 and RRE — the two protocols that make it reliable
-
-**AEP-1 (Agent Envelope Protocol)** is the text contract with a model. One
-envelope carries a whole plan, so a single model turn can replace N screen
-round trips:
-
-```
-@aep:1 plan
-{"schema":"plan.v1","title":"아침 루틴","steps":[
-  {"commandId":"calendar.today"},
-  {"commandId":"mail.latest","args":{"limit":"5"}}]}
-```
-
-The parser walks a fixed seven-rung recovery ladder (strict fence → fenced
-schema → header → balanced object → repair → plain prose). It never executes
-anything it could not validate, and a plan that arrives without steps is
-returned for one repair turn instead of being guessed at.
-
-**RRE (Response Reconciliation Engine)** solves the bug that every bridge app
-hits: streamed deltas and DOM snapshots describe the same answer differently.
-RRE treats each arrival as a candidate, scores completeness, merges cumulative
-frames without duplicating text, and **reports a confidence** — a snapshot-only
-answer is marked less trustworthy than one confirmed by the stream.
-
----
-
-## Reliability model
-
-* **Journal** — one line per transition, each line hashing the previous one.
-  `verify()` detects edits, truncation and out-of-order records.
-* **Resume** — `plan_started` without `plan_finished` is found on startup, the
-  plan definition is reloaded from its archive, and step results come from the
-  checkpoint, so a resumed plan does not resend a mail or relaunch an app. A step
-  that was mid-flight when the process died asks for approval again.
-* **Journal integrity** — every append is fsynced; a half-written final line is
-  truncated at the last complete record on load and the chain keeps going.
-* **ETA** — per-command EWMA with a sample count; promises get more accurate the
-  more you use the app.
-* **Honest failure** — every command returns `Ok`, `NeedInput` or `Failed`.
-  "메일 계정이 연결되지 않았습니다" is a result, not a stack trace.
-
----
-
-## Build and test
-
-Requires JDK 17 and Android SDK 35 (CI does this for you).
+## 빌드
 
 ```bash
-./gradlew testDebugUnitTest    # 118 unit, Robolectric and Compose UI tests
-./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
-./gradlew lintDebug
+./gradlew :app:testDebugUnitTest   # 코어 30개 + 화면 렌더 12개
+./gradlew :app:assembleDebug
 ```
+릴리스 서명: `keystore/hjtk-release.jks`(저장소에 올리지 않음)를 두고 `HJTK_KS_PASS` 환경변수를 설정하세요.
 
-The test suite covers, among others:
+## 구조
 
-| Area | What is asserted |
-|---|---|
-| Router | 20+ real Korean sentences map to the expected command; determinism over 20 repeats |
-| Catalog | 64 commands, unique namespaced ids, every category populated, required slots carry examples, outward effects marked |
-| Command smoke | **every command is executed** against fakes; `NeedInput` and exceptions fail the build |
-| Compiler | cycles, forward references, variable substitution, missing slots |
-| Executor | approval reject = zero effects, failing step stops the plan, resume skips finished steps |
-| Journal | 50-record chain verifies, a single edited line is detected, corrupt lines are skipped |
-| RRE | incremental, cumulative, overlapping and conflicting streams |
-| Concurrency | three plans overlap, a fourth queues, cancelling one leaves the others intact, same-resource steps serialise |
-| Android runtime (Robolectric) | engine composition root builds, secrets round-trip, files are written inside app storage, notifications work |
-| UI (Compose + Robolectric) | the Activity starts and reaches RESUMED; every tab opens its own screen, the command palette opens and filters, a typed request reaches the store end to end, an approval card can be cancelled, an unknown request starts no plan |
-| Recovery | a plan interrupted by process death is archived and resumed from its checkpoint; a torn journal line is truncated and the chain continues |
+```
+core/        순수 Kotlin(안드로이드 의존 없음, JVM 테스트)
+  aep/       AEP-1 봉투 · 7단계 파서 · 엄격 JSON 검사
+  stream/    SSE 파서 · DeepSeek JSON-패치 조립 · 델타/누적 판정 · 종료 판정
+  command/   명령어 사전 150 · 결정론 명령(계산·텍스트·단위…)
+  agent/     에이전트 루프 · 프로토콜 · 5분 보고 · ETA
+  aegis/     정책 · 정규화 다이제스트 · 1회용 승인 토큰
+  Support.kt 저널(해시 체인) · L0 검증기 · 기억 · 파이프라인 · 입력 라우터 · 마스킹
+engine/      DeepSeek WebView · API 키 경로 · 외부 앱 브리지 · 접근성 · 알림
+tools/       명령어 → 안드로이드 동작(웹·메일·캘린더·파일…)
+agent/       JobRunner: 사건을 대화·알림·펫으로 번역, 사람의 손을 기다림
+service/     세션 FGS + 펫 오버레이
+ui/          Compose — 디자인 시스템 '접지(Fold & Signal)'
+```
+확장은 `CommandCatalog`에 한 줄을 추가하고 `AndroidTools`에 핸들러 하나를 넣으면 끝납니다.
 
----
+## 정직한 한계
 
-## Privacy and security
+- 실기기에서 DeepSeek 왕복을 아직 검증하지 않았습니다(빌드 환경에 기기 없음). DeepSeek 웹 화면이 바뀌면 P0→P1→P4 순으로 내려가고, 그래도 안 되면 붙여넣기/공유로 이어갑니다.
+- 5분 보고는 Android가 보장하지 않습니다(Doze·제조사 절전). 못 지키면 표시합니다.
+- 접근성(화면 읽기)은 사이드로드 전용입니다. Android 13+에서는 앱 정보 → ⋮ → '제한된 설정 허용'이 필요할 수 있습니다.
+- 자동화는 서비스 약관과 충돌할 수 있습니다. 본인 계정·본인 세션을 쓰는 개인 도구로 설계했고, 요청 빈도를 낮게 유지합니다.
 
-* Secrets (API keys, mail app passwords) are encrypted with **AES-GCM under an
-  Android Keystore key**; when the key is unavailable the app asks again instead
-  of falling back to a weaker store.
-* The journal stores **SHA-256 digests**, never message bodies or mail contents.
-* No analytics, no telemetry, no third-party SDKs. The only network calls are
-  the ones a command you ran makes.
-* `allowBackup=false` and data-extraction rules exclude everything: a backup or
-  a device transfer will not carry your secrets or conversations.
-* The app requests no broad package listing (`QUERY_ALL_PACKAGES`), no contacts,
-  no SMS body access.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
-Third-party components: AndroidX / Jetpack Compose / Material 3 (Apache-2.0),
-OkHttp (Apache-2.0), kotlinx.serialization & coroutines (Apache-2.0), Jakarta
-Mail for Android (EPL-2.0/GPL-2.0 with Classpath Exception). No third-party
-artwork is bundled; the launcher icon is a vector drawn for this project.
+만든 사람: 허태혁 (HT)
