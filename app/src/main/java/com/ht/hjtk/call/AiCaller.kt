@@ -75,7 +75,7 @@ class AiCaller(private val h: Hjtk) {
                 val opening = Say("open", "첫 인사", PhoneGuard.disclosure(user()) + " " + line)
                 session.update { it.copy(opening = opening, phase = Phase.RENDERING, note = "내 목소리로 첫 인사를 만드는 중") }
                 Thermal.coolDown(20_000)
-                for (t in listOf(opening.text, FILLER, REPEAT)) if (h.voice.cached(t) == null) runCatching { h.voice.sentence(t) }
+                for (t in listOf(opening.text, ACK, FILLER, REPEAT)) com.ht.voice.KoText.sentences(t, 22).forEach { p -> if (h.voice.cached(p) == null) runCatching { h.voice.sentence(p) } }
                 session.update { it.copy(opening = opening.copy(ready = true), phase = Phase.READY, note = "준비 완료") }
                 if (session.value.autoDial) dial()?.let { err -> session.update { it.copy(phase = Phase.ERROR, note = err) } }
             } catch (e: Exception) { session.update { it.copy(phase = Phase.ERROR, note = "준비하지 못했어요: ${e.message?.take(80)}") } }
@@ -98,7 +98,7 @@ class AiCaller(private val h: Hjtk) {
             if (live == null) { finish("상대가 받지 않았어요"); return@launch }
             session.update { it.copy(phase = Phase.LIVE, note = "통화 중") }
             CallCenter.speaker(true)
-            if (Ear.isOn(h.app)) Ear.start { pcm -> onUtterance(pcm) }
+            if (Ear.isOn(h.app)) Ear.start(h.app, heard = { backchannel() }, text = { t -> heard(t, fromEar = true) })
             delay(900)
             speakNow(session.value.opening?.text ?: return@launch)
             CallCenter.lines.first { l -> l.none { it.ai && !it.ended } }
@@ -107,23 +107,26 @@ class AiCaller(private val h: Hjtk) {
         return null
     }
 
-    private suspend fun onUtterance(pcm: ShortArray) {
-        if (session.value.paused || session.value.phase != Phase.LIVE) return
+    /** 상대 말이 막 끝난 순간: 받아 적기·생각이 끝나기 전에 '네.'로 먼저 반응한다(미리 만든 소리라 즉시) */
+    private var lastAck = 0L
+    private fun backchannel() {
+        if (session.value.paused || session.value.phase != Phase.LIVE || session.value.mind == Mind.SPEAKING) return
+        if (System.currentTimeMillis() - lastAck < 4_000) return
+        lastAck = System.currentTimeMillis()
         session.update { it.copy(mind = Mind.THINKING) }
-        val text = Ear.transcribe(h.app, pcm)
-        if (text == null) { session.update { it.copy(mind = Mind.LISTENING, note = "알아듣지 못했어요 · 계속 듣는 중") }; return }
-        heard(text)
+        scope.launch { playCached(ACK) }
     }
 
     /** 상대가 한 말(받아 적은 것 또는 사용자가 적은 것) → AI가 다음 한 마디 */
-    fun heard(note: String) {
+    fun heard(note: String, fromEar: Boolean = false) {
         val t = note.trim(); if (t.isEmpty()) return
         log("상대", t)
+        if (!fromEar) backchannel()
         scope.launch {
             turnLock.withLock {
                 if (session.value.paused) return@withLock
                 session.update { it.copy(mind = Mind.THINKING) }
-                val filler = launch { delay(1_500); playCached(FILLER) }
+                val filler = launch { delay(4_000); playCached(FILLER) }   // 생각이 길어질 때만
                 val reply = runCatching { h.runner.callAsk(replyPrompt(), "call:${session.value.convId}") }.getOrNull()
                     ?.lines()?.filter { it.isNotBlank() }?.joinToString(" ")?.trim()?.trim('"', '“', '”')?.removePrefix("AI:")?.trim()?.take(160)
                 filler.cancel(); filler.join()
@@ -183,7 +186,8 @@ class AiCaller(private val h: Hjtk) {
         return buildString {
             appendLine("[전화 통화 중 · 다음 한 마디만] 너는 ${user() ?: "사용자"}님을 대신해 통화 중인 AI 비서다. 이미 AI임을 밝혔다.")
             appendLine("목적: ${s.goal}"); if (s.facts.isNotBlank()) appendLine("말해도 되는 정보: ${s.facts}")
-            appendLine("규칙: 존댓말 · 1~2문장 · 60자 안팎 · 상대 말이 끊겨 들렸으면 자연스럽게 되묻기 · 결제/계약/취소는 동의하지 말고 본인이 직접 확인한다고 · 카드·주민번호·비밀번호는 말하지 않기 · AI냐고 물으면 그렇다고.")
+            appendLine("말하기 전에 이미 '네.'라고 맞장구쳤으니 '네'로 시작하지 마라. 짧은 구절을 쉼표로 이어 말하라(빨리 말할 수 있게).")
+            appendLine("규칙: 존댓말 · 1~2문장 · 45자 안팎 · 상대 말이 끊겨 들렸으면 자연스럽게 되묻기 · 결제/계약/취소는 동의하지 말고 본인이 직접 확인한다고 · 카드·주민번호·비밀번호는 말하지 않기 · AI냐고 물으면 그렇다고.")
             appendLine("목적을 이뤘거나 상대가 끝내려 하면 짧게 인사하고 맨 끝에 [끝]을 붙여라. 따옴표·설명 없이 할 말만.")
             appendLine("지금까지:"); s.transcript.takeLast(14).forEach { appendLine("${it.who}: ${it.text}") }
             append("AI:")
@@ -191,7 +195,8 @@ class AiCaller(private val h: Hjtk) {
     }
 
     companion object {
-        const val FILLER = "네, 잠시만요."
+        const val ACK = "네."
+        const val FILLER = "잠시만요."
         const val REPEAT = "죄송한데, 한 번만 다시 말씀해 주시겠어요?"
         const val BYE = "네, 감사합니다. 좋은 하루 보내세요."
         const val INCOMING_PREFIX = "안녕하세요, 저는 AI 비서예요. "
@@ -202,7 +207,7 @@ class AiCaller(private val h: Hjtk) {
     fun warmUp() {
         if (!h.voice.packReady() || warmed || Thermal.level.value >= 1 && !Thermal.charging.value) return
         warmed = true
-        scope.launch { (listOf(FILLER, REPEAT, BYE) + INCOMING.flatMap { com.ht.voice.KoText.sentences(INCOMING_PREFIX + it) }).forEach { t -> if (h.voice.cached(t) == null) runCatching { h.voice.sentence(t) } } }
+        scope.launch { (listOf(ACK, FILLER, REPEAT, BYE) + INCOMING.flatMap { com.ht.voice.KoText.sentences(INCOMING_PREFIX + it) }).forEach { t -> if (h.voice.cached(t) == null) runCatching { h.voice.sentence(t) } } }
     }
 
     // 3.0 화면 호환용(없어진 기능): 미리보기·다시·고치기는 첫 인사에만

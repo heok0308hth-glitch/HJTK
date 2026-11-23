@@ -128,7 +128,7 @@ fun ChatScreen(vm: MainVm) {
 private fun Thinking(vm: MainVm, cid: String) {
     // 경과 초를 보여 준다: '멈췄나?'와 '생각 중'을 사용자가 구분할 수 있게
     var sec by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) { if (Motion.enabled) while (true) { delay(1000); sec++ } }
+    LaunchedEffect(Unit) { if (!Motion.test) while (true) { delay(1000); sec++ } }
     val lines by LiveBus.lines.collectAsState()
     val line = lines[cid]
     val text = line?.text?.let { remember(it) { com.ht.hjtk.core.stream.AepView.clean(it) } } ?: ""
@@ -145,26 +145,17 @@ private fun Thinking(vm: MainVm, cid: String) {
 
 @Composable
 private fun EmptyChat(vm: MainVm) {
-    val ideas = listOf(
-        "공모전 찾아서 준비해줘" to "검색 → 마감순 표 → 고르면 초안까지",
-        "오늘 일정이랑 날씨, 안 읽은 메일 정리해줘" to "캘린더·날씨·메일을 모아 5줄 브리핑",
-        "다음 주 서울 전시회 3개 추천하고 일정에 넣어줘" to "웹 검색 + 일정 추가(허락 후)",
-        "/계산 1,250,000*0.033" to "AI 없이 바로 실행되는 명령어"
-    )
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.Center) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Image(painterResource(R.drawable.hjtk_mark_ink), null, Modifier.size(54.dp))
-            Spacer(Modifier.weight(1f))
-        }
-        Spacer(Modifier.height(14.dp))
-        Text(I18n.t("무엇을 맡길까요?"), style = T.display)
-        Spacer(Modifier.height(6.dp))
-        Text("HJTK 안에는 AI가 없어요. 폰의 DeepSeek에게 일을 시키고, 명령어 ${CommandCatalog.ALL.size}개로 실행하고, 5분마다 보고합니다.", style = T.small)
-        Spacer(Modifier.height(18.dp))
-        Hairline(color = C.Ink)
-        ideas.forEachIndexed { i, (t, s) ->
-            NumRow(i + 1, t, s, onClick = { vm.draft.value = t })
-            if (i < ideas.lastIndex) Hairline()
+    // 3.1: 예시 카드를 모두 뺐다 — 인사 한 줄과 지금 쓰는 AI 한 줄만. 나머지는 입력창이 말한다
+    val name = vm.store.settings.value.userName
+    val who = vm.h.ai.chatAssignment()?.name ?: "DeepSeek"
+    Column(Modifier.fillMaxSize().padding(horizontal = 32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(painterResource(R.drawable.hjtk_mark_ink), null, Modifier.size(40.dp), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(C.Ink))
+        Spacer(Modifier.height(22.dp))
+        Text(if (name.isNotBlank()) "$name${I18n.t("님, 무엇을 할까요?")}" else I18n.t("무엇을 할까요?"), style = T.display.copy(fontSize = 26.sp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.clip(RoundedCornerShape(50)).press({ vm.pickerOpen.value = true }).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(C.Red)); Spacer(Modifier.width(8.dp))
+            Text(who, style = T.small.copy(color = C.Graphite)); Spacer(Modifier.width(4.dp)); Ico(I.Down, 14.dp, C.Graphite)
         }
     }
 }

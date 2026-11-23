@@ -180,7 +180,8 @@ class VoiceHub(private val ctx: Context) {
             val pcm = synthLock.withLock {
                 state.value = state.value.copy(busy = true)
                 try {
-                    val vp = print(voice).let { if (fast) it.trimmed(4f) else it }
+                    // 통화용은 참고 음성을 2.5초로: 디코더가 훨씬 빨라진다(닮음 차이는 작다)
+                    val vp = print(voice).let { if (fast) it.trimmed(2.5f) else it }
                     val ids = tokenizer.encode(norm)
                     val e = engine()
                     // 다시 만들기: 같은 글이라도 강조값을 조금 흔들어 다른 소리 토큰을 얻는다(탐욕 선택이라 그대로는 같은 결과)
@@ -206,7 +207,8 @@ class VoiceHub(private val ctx: Context) {
 
     /** 문장 단위로 만들면서 바로 재생: 첫 문장이 끝나기 전에 다음 문장을 만든다 */
     suspend fun speak(text: String, call: Boolean = false, onSentence: (String) -> Unit = {}, cancel: () -> Boolean = { false }) {
-        val parts = KoText.sentences(text)
+        // 통화는 짧은 구절 단위(22자)로 잘라 첫 소리를 빨리 낸다: 첫 구절을 말하는 동안 다음 구절을 만든다
+        val parts = KoText.sentences(text, if (call) 22 else 60)
         val ch = Channel<Pair<String, ShortArray>>(2)
         val producer = scope.launch {
             try { for (p in parts) { if (cancel()) break; ch.send(p to sentence(p, fast = call, cancel = cancel)) } } catch (_: Exception) {} finally { ch.close() }

@@ -12,6 +12,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** AI가 작업 중에 쓰는 전화 명령. 전부 HJTK 안에서 처리한다 */
 object PhoneHandlers {
     fun of(h: Hjtk): Map<String, CommandHandler> = mapOf(
+        "google.ask" to CommandHandler { c ->
+            val port = com.ht.hjtk.engine.WebAiHub.port(com.ht.hjtk.core.ai.Provider.GEMINI) ?: return@CommandHandler CommandResult.fail("Gemini 창을 열 수 없어요")
+            val r = port.send(com.ht.hjtk.engine.AccountHub.googlePrompt(c.arg("app"), c.arg("q")), "google", 1, true)
+            when {
+                r.text.isNotBlank() -> CommandResult.ok(r.text)
+                r.via == "NEEDS_LOGIN" -> CommandResult.fail("구글 계정 로그인이 필요해요(허브 → 계정 하나로)")
+                else -> CommandResult.fail("구글에서 답을 받지 못했어요(${r.via})")
+            }
+        },
         "phone.dial" to CommandHandler { c ->
             val n = c.arg("number")
             if (PhoneGuard.normalize(n) == null) return@CommandHandler CommandResult.fail("전화번호 형식이 아니에요")

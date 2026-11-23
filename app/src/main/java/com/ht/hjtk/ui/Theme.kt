@@ -154,7 +154,8 @@ fun SignalDot(color: Color = C.Red, size: Dp = 7.dp, pulse: Boolean = false) {
 }
 
 /** 테스트에서 무한 애니메이션을 끄기 위한 전역 스위치 */
-object Motion { var enabled = true }
+/** enabled: 장식 애니메이션(뜨거우면 끈다) · test: 화면 캡처 시험 중(웹 화면·타이머를 그리지 않는다) — 둘을 섞으면 안 된다 */
+object Motion { var enabled = true; var test = false }
 
 /** 화면 캡처 테스트에서 '키보드 열림' 레이아웃을 강제로 그리기 위한 스위치 */
 val LocalForceIme = androidx.compose.runtime.staticCompositionLocalOf { false }

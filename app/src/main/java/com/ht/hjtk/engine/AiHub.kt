@@ -223,7 +223,7 @@ class ApiPort(
         while (h.sumOf { it.second.length } > 24_000 && h.size > 2) { h.removeAt(0); if (h.firstOrNull()?.first == "assistant") h.removeAt(0) }
         var last = 0L
         val o = owner.ifBlank { jobId }
-        val r = ApiStream.chat(p, base, key, model, h.toList(), prefs.system.ifBlank { null }, prefs, images) { acc ->
+        val r = ApiStream.chat(p, base, key, model, h.toList(), prefs.system.ifBlank { null }, prefs, images, style = if (owner.isEmpty()) ChatStyle.state.value else null) { acc ->
             val now = System.currentTimeMillis()
             if (now - last > Thermal.liveIntervalMs) { last = now; LiveBus.put(o, name, acc) }
         }
@@ -244,7 +244,7 @@ object ApiStream {
     private fun b64(f: File) = android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
     private fun mime(f: File) = if (f.name.endsWith(".png", true)) "image/png" else "image/jpeg"
 
-    suspend fun chat(p: Provider, base: String, key: String, model: String, messages: List<Pair<String, String>>, system: String?, prefs: GenPrefs, images: List<File> = emptyList(), onDelta: (String) -> Unit): Result = withContext(Dispatchers.IO) {
+    suspend fun chat(p: Provider, base: String, key: String, model: String, messages: List<Pair<String, String>>, system: String?, prefs: GenPrefs, images: List<File> = emptyList(), style: ChatStyle.S? = null, onDelta: (String) -> Unit): Result = withContext(Dispatchers.IO) {
         val b = base.trimEnd('/')
         val lastUser = messages.indexOfLast { it.first == "user" }
         val (url, headers, body) = when (p.apiStyle) {
@@ -283,6 +283,7 @@ object ApiStream {
                     put("messages", ms)
                 })
         }
+        style?.let { ChatStyle.apply(p, body, it) }   // 대화: 노력·창의성·길이
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"; doOutput = true; connectTimeout = 15_000; readTimeout = 120_000
             setRequestProperty("Content-Type", "application/json"); setRequestProperty("Accept", "text/event-stream")

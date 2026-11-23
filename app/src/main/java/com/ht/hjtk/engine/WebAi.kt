@@ -53,6 +53,10 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
     private var web: WebView? = null
     private var cockpit: WeakReference<ViewGroup>? = null
     @Volatile var lastUrl: String? = null; private set
+    /** 대화에서 고른 모델(예: "Opus"). 다르면 보내기 전에 사이트의 모델 메뉴에서 고른다 */
+    @Volatile var wantModel: String? = null
+    private var gotModel: String? = null
+    val modelNote = MutableStateFlow("")
     private val mutex = Mutex()
     private var lastUse = 0L
     private val js by lazy { app.assets.open("webai.js").bufferedReader().use { it.readText() } }
@@ -167,6 +171,23 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
         return status.value
     }
 
+    /** 구글 계정 하나로: 로그인 화면에서 'Google로 계속' → 계정 → 동의를 대신 누른다(최대 [ms]) */
+    suspend fun ssoConnect(loginUrl: String, ms: Long = 60_000, onStep: (String) -> Unit = {}): Boolean {
+        ui { ensure(); place() }
+        if (waitState(15_000) == Status.READY) return true.also { WebAiHub.setLoggedIn(site.provider, true) }
+        ui { web?.loadUrl(loginUrl) }; delay(2_500)
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) {
+            val st = runCatching { Status.valueOf(eval("window.__hjtkAi.state()")) }.getOrDefault(Status.LOADING)
+            if (st == Status.READY) { status.value = st; WebAiHub.setLoggedIn(site.provider, true); return true }
+            if (st == Status.CHALLENGE) { onStep("사람 확인이 필요해요 — 화면에서 한 번 눌러 주세요"); delay(3_000); continue }
+            val r = eval("window.__hjtkAi.sso('${site.provider.name.lowercase()}')")
+            onStep(when { r.startsWith("ACCOUNT") -> "구글 계정을 고르는 중"; r.startsWith("CONSENT") -> "동의하는 중"; r.startsWith("CLICK") -> "Google로 계속 누르는 중"; r.startsWith("LOGIN_PAGE") -> "로그인 화면 여는 중"; else -> "기다리는 중" })
+            delay(Thermal.poll(1_800))
+        }
+        return false
+    }
+
     /** 이어서 쓸 대화방 주소(없으면 새 대화) */
     suspend fun ensureSession(url: String?) { if (url != null && url != lastUrl) ui { ensure().loadUrl(url) } }
 
@@ -180,6 +201,11 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
             Status.CHALLENGE -> return fail("CHALLENGE")
             Status.READY -> Unit
             else -> return fail("WEB_NOT_READY")
+        }
+        wantModel?.takeIf { it != gotModel }?.let { m ->
+            val r = eval("window.__hjtkAi.model(${JSONObject.quote(m)})")
+            val ok = when (r) { "ALREADY" -> true; "OPENED" -> { delay(600); eval("window.__hjtkAi.choose(${JSONObject.quote(m)})") == "OK" }; else -> false }
+            if (ok) { gotModel = m; modelNote.value = "$m 선택됨"; delay(400) } else modelNote.value = "사이트에서 $m 을(를) 찾지 못해 기본 모델로 보냈어요"
         }
         val n0 = eval("window.__hjtkAi.count()").toIntOrNull() ?: 0
         val before = eval("window.__hjtkAi.last()")

@@ -10,3 +10,12 @@ object RoutineCommands {
         spec("routine.remove", "루틴 지우기", "id*:루틴 ID 또는 이름", "루틴을 지운다", "루틴삭제")
     )
 }
+
+/** 계정 하나로(구글): 메일·드라이브·메모·캘린더를 로그인된 Gemini의 Google 앱 연결로 본다 — 키·앱 비밀번호 없이 */
+object AccountCommands {
+    val specs: List<CommandSpec> = listOf(
+        CommandSpec("google.ask", "내 구글에 묻기", Category.WEB, Effect.READ,
+            listOf(Param("app", "gmail/drive/keep/calendar/docs/youtube/maps", true), Param("q", "찾거나 정리할 것(예: 이번 주 받은 공모전 메일)", true)),
+            "로그인한 구글 계정의 Gmail·드라이브·Keep·캘린더·문서를 읽고 정리한다(HJTK 안 Gemini 웹 경유)", listOf("구글")),
+    )
+}

@@ -29,7 +29,7 @@ class ScreensTest {
     private lateinit var vm: MainVm
 
     @Before fun seed() {
-        Motion.enabled = false
+        Motion.enabled = false; Motion.test = true
         val h = Hjtk.get(ApplicationProvider.getApplicationContext())
         val st = h.store
         st.updateSettings { it.copy(lang = "ko", onboarded = true, userName = "허태혁") }
@@ -167,5 +167,7 @@ class ScreensTest {
         com.ht.hjtk.call.CallCenter.lines.value = emptyList()
     }
     @Test fun s35_hubLight() { com.ht.hjtk.ui.C.dark = false; vm.go(Route.Hub); shot("35_hub_light") { HjtkApp(vm) }; com.ht.hjtk.ui.C.dark = true }
+    @Test fun s36_emptyChat() { vm.newChat(); shot("36_empty_chat") { HjtkApp(vm) } }
+    @Test fun s37_picker() { vm.pickerOpen.value = true; shot("37_model_picker") { HjtkApp(vm) }; vm.pickerOpen.value = false }
     @Test fun s34_dialer() { shot("34_dialer") { com.ht.hjtk.ui.CallScreen(vm.h, "0262051180", onClose = {}) } }
 }

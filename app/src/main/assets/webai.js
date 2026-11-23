@@ -67,6 +67,43 @@
       ['keydown', 'keypress', 'keyup'].forEach(function (k) { el2.dispatchEvent(new KeyboardEvent(k, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true })); });
       return 'ENTER';
     },
+    /* 모델 고르기: 모델 버튼을 눌러 메뉴를 열고, 이름이 들어간 항목을 누른다(사이트마다 모양이 달라 글자로 찾는다) */
+    model: function (name) {
+      var re = /(opus|sonnet|haiku|claude|gpt|o\d|chatgpt|gemini|flash|pro|grok|fast|expert|thinking|auto|instant|모델)/i;
+      var btn = q(api.cfg.modelBtn);
+      if (!btn) { var bs = document.querySelectorAll('button,[role=button]'); for (var i = 0; i < bs.length; i++) { var t = text(bs[i]); if (t.length < 40 && re.test(t + ' ' + (bs[i].getAttribute('aria-label') || '')) && vis(bs[i])) { btn = bs[i]; break; } } }
+      if (!btn) return 'NO_BUTTON';
+      if (text(btn).toLowerCase().indexOf(name.toLowerCase()) >= 0) return 'ALREADY';
+      btn.click();
+      return 'OPENED';
+    },
+    choose: function (name) {
+      var items = document.querySelectorAll('[role=menuitem],[role=menuitemradio],[role=option],[data-testid*=model],li button,li');
+      var n = name.toLowerCase();
+      for (var i = 0; i < items.length; i++) { if (vis(items[i]) && text(items[i]).toLowerCase().indexOf(n) >= 0) { items[i].click(); return 'OK'; } }
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return 'NOT_FOUND';
+    },
+    /* 구글 계정으로 이어서 로그인: 'Google로 계속' → 계정 고르기 → 계속/허용. 한 번 부를 때 한 단계만 누른다 */
+    sso: function (provider) {
+      var h = location.host;
+      function clickText(re, scope) {
+        var els = (scope || document).querySelectorAll('button,a,[role=button],[role=link],div[data-identifier],li');
+        for (var i = 0; i < els.length; i++) { var t = (text(els[i]) + ' ' + (els[i].getAttribute('aria-label') || '')).trim(); if (t.length < 80 && re.test(t) && vis(els[i])) { els[i].click(); return t; } }
+        return null;
+      }
+      if (/accounts\.google\.com/.test(h)) {
+        var acc = document.querySelector('[data-identifier],[data-email]');
+        if (acc && vis(acc)) { acc.click(); return 'ACCOUNT'; }
+        var c = clickText(/^(continue|계속|허용|allow|다음|next|확인|confirm)$/i) || clickText(/(continue|계속|allow|허용)/i);
+        return c ? 'CONSENT:' + c : 'GOOGLE_WAIT';
+      }
+      if (provider === 'naver') { var n = clickText(/(네이버|naver).{0,6}(로그인|계속|login|continue)|(로그인|login).{0,6}(네이버|naver)/i); return n ? 'CLICK:' + n : 'WAIT'; }
+      var g = clickText(/(google|구글).{0,12}(계속|로그인|continue|sign|log)|(continue|sign in|log in|계속|로그인).{0,12}(google|구글)/i);
+      if (g) return 'CLICK:' + g;
+      var login = clickText(/^(log in|sign in|로그인|시작하기|get started|sign up)$/i);
+      return login ? 'LOGIN_PAGE:' + login : 'WAIT';
+    },
     pending: function () { var el = api.input(); return el ? (text(el) || el.value || '').length : -1; }
   };
   window.__hjtkAi = api;

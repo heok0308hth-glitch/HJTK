@@ -525,7 +525,8 @@ class JobRunner(private val h: Hjtk) {
         val room = webAiRooms[key]
         if (room != null) port.ensureSession(room)
         streamingConv.value = convId
-        val r = try { port.send(text, convId, 1, room == null) } finally { streamingConv.value = null }
+        port.wantModel = h.ai.state.value.chatPin.substringAfter('|', "").takeIf { it.isNotBlank() }?.let { id -> com.ht.hjtk.core.ai.ModelCatalog.of(p).firstOrNull { it.id == id }?.label?.split(' ')?.lastOrNull { w -> w.any { c -> c.isLetter() } } }
+        val r = try { port.send(com.ht.hjtk.engine.ChatStyle.hint() + text, convId, 1, room == null) } finally { streamingConv.value = null }
         port.lastUrl?.takeIf { it != port.site.home && r.text.isNotBlank() }?.let { webAiRooms[key] = it }
         return r
     }
@@ -540,7 +541,7 @@ class JobRunner(private val h: Hjtk) {
                 val fresh = conv?.dsSession == null
                 if (!fresh) lane.ensureSession(conv?.dsSession)
                 streamingConv.value = convId
-                val rr = try { mirror(lane, convId, "DeepSeek" + if (lane !== h.deepseek) " · 대화 창" else "") { lane.send(text, convId, 1, fresh) } } finally { streamingConv.value = null }
+                val rr = try { mirror(lane, convId, "DeepSeek" + if (lane !== h.deepseek) " · 대화 창" else "") { lane.send(com.ht.hjtk.engine.ChatStyle.hint() + text, convId, 1, fresh) } } finally { streamingConv.value = null }
                 lane.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { u -> store.updateConversation(convId) { it.copy(dsSession = u) } }
                 rr
             }
@@ -695,7 +696,7 @@ class JobRunner(private val h: Hjtk) {
         }
         if (r.via == "NEEDS_LOGIN" && a?.member?.transport == com.ht.hjtk.core.ai.Transport.WEB && a.member.provider != com.ht.hjtk.core.ai.Provider.DEEPSEEK) {
             com.ht.hjtk.engine.WebAiHub.setLoggedIn(a.member.provider, false)
-            store.msg(convId, Role.SYSTEM, "${a.member.provider.label} 로그인이 풀렸어요. 허브 → AI 로그인에서 다시 로그인해 주세요.", "error", mapOf("via" to r.via, "login" to a.member.provider.name)); return
+            store.msg(convId, Role.SYSTEM, "${a.member.provider.label} 로그인이 풀렸어요. 허브 → 계정 하나로에서 다시 연결해 주세요.", "error", mapOf("via" to r.via, "login" to a.member.provider.name)); return
         }
         val why = if (r.via == "API_ERR") "$name 연결 오류예요. 설정 → AI 모델에서 키와 모델 이름을 확인해 주세요." else if (r.via == "NO_KEY") "$name 키가 없어요. 설정 → AI 모델에서 추가하거나 다른 모델을 고르세요." else explain(r.via)
         store.msg(convId, Role.SYSTEM, why, "error", mapOf("via" to r.via))

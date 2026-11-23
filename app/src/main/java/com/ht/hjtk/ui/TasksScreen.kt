@@ -204,7 +204,7 @@ fun CockpitScreen(vm: MainVm) {
         Text(I18n.t("AI가 지금 쓰는 DeepSeek 화면 그대로입니다. 로그인·확인처럼 사람만 할 수 있는 일은 여기서 하고, 작업 중에는 지켜보거나 직접 개입할 수 있어요."),
             style = T.small.copy(color = C.OnInkMute, fontSize = 12.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         Box(Modifier.weight(1f).fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)).background(C.Paper)) {
-            if (androidx.compose.ui.platform.LocalInspectionMode.current || !Motion.enabled) Text(I18n.t("DeepSeek 화면"), style = T.small, modifier = Modifier.align(Alignment.Center))
+            if (androidx.compose.ui.platform.LocalInspectionMode.current || Motion.test) Text(I18n.t("DeepSeek 화면"), style = T.small, modifier = Modifier.align(Alignment.Center))
             else AndroidView(factory = { c -> FrameLayout(c).also { f -> f.layoutParams = ViewGroup.LayoutParams(-1, -1); vm.h.deepseek.attach(f) } }, modifier = Modifier.fillMaxSize(),
                 onRelease = { f -> f.removeAllViews(); vm.h.deepseek.park() })
         }

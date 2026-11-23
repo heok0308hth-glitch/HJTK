@@ -18,12 +18,16 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- 3.0 기기 안 전화: 걸기 · 기본 전화 앱의 수신 화면(잠금 화면 전체 화면) -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- 통화 귀(별도 앱)와 같은 서명끼리만 주고받는다. HJTK 본체에는 접근성 서비스가 없다(Play 프로텍트가 설치를 막지 않게) -->
+    <permission android:name="com.ht.hjtk.permission.EAR" android:protectionLevel="signature" />
+    <uses-permission android:name="com.ht.hjtk.permission.EAR" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <queries>
+        <package android:name="com.ht.hjtk.ear" />
         <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <package android:name="com.anthropic.claude" />
@@ -122,12 +126,6 @@
             </intent-filter>
         </activity>
         <receiver android:name=".call.CallActionReceiver" android:exported="false" />
-        <!-- 통화 귀: AI 통화 중 상대 목소리를 듣는다(Android는 통화 중 소리를 접근성 서비스에만 허락) -->
-        <service android:name=".call.EarService" android:exported="false" android:label="@string/ear_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
-            <meta-data android:name="android.accessibilityservice" android:resource="@xml/ear_service" />
-        </service>
         <service android:name=".engine.CaptureService" android:exported="false" android:foregroundServiceType="mediaProjection" />
     </application>
 </manifest>

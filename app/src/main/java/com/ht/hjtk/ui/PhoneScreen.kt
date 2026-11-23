@@ -63,7 +63,8 @@ fun PhoneScreen(vm: MainVm) {
                 }
                 if (!dialer) Step(I18n.t("기본 전화 앱으로 지정"), I18n.t("통화가 HJTK 안에서 열려요"), action = I18n.t("지정")) { CallCenter.roleIntent(ctx)?.let { role.launch(it) } }
                 if (!canCall) Step(I18n.t("전화·마이크 권한"), I18n.t("AI가 걸고 들을 수 있게"), action = I18n.t("허용")) { perm.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS)) }
-                if (!ear) Step(I18n.t("통화 귀 켜기 (선택)"), I18n.t("켜면 AI가 상대 말을 직접 들어요 · 접근성 → HJTK 통화 귀"), action = I18n.t("켜기")) { ctx.startActivity(Ear.settingsIntent()) }
+                if (!ear) Step(I18n.t("통화 귀 (선택)"), if (Ear.installed(ctx)) I18n.t("켜면 AI가 상대 말을 직접 들어요 · 마이크 허용 → 접근성 켜기") else I18n.t("함께 받은 'HJTK 통화 귀' 작은 앱을 설치하면 AI가 직접 들어요"),
+                    action = if (Ear.installed(ctx)) I18n.t("켜기") else I18n.t("안내")) { Ear.setupIntent(ctx)?.let { ctx.startActivity(it) } ?: run { err = "HJTK-통화귀.apk를 설치해 주세요. Play 프로텍트가 막아도 이 작은 앱만 막히고 HJTK는 그대로예요." } }
                 if (allOk) Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).clip(RoundedCornerShape(50)).background(C.Red)); Spacer(Modifier.width(10.dp))
                     Text(if (ear) I18n.t("AI가 직접 듣고 말해요") else I18n.t("AI가 말하고, 상대 말은 한 줄로 적어 주면 돼요"), style = T.small.copy(color = C.Ink2), modifier = Modifier.weight(1f))

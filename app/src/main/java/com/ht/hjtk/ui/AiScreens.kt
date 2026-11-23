@@ -47,39 +47,74 @@ fun ModelPickerSheet(vm: MainVm) {
     val open by vm.pickerOpen.collectAsState()
     if (!open) return
     val st by vm.h.ai.state.collectAsState()
-    val members = remember(st) { vm.h.ai.members() }
-    fun pick(v: String) { vm.h.ai.update { it.copy(chatPin = v) }; vm.pickerOpen.value = false }
-    Box(Modifier.fillMaxSize().background(Color(0x66000000)).press({ vm.pickerOpen.value = false })) {
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = 620.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)).background(C.Paper)
+    val logged by com.ht.hjtk.engine.WebAiHub.loggedIn.collectAsState()
+    val style by com.ht.hjtk.engine.ChatStyle.state.collectAsState()
+    val members = remember(st, logged) { vm.h.ai.members() }
+    var sel by remember { mutableStateOf<Provider?>(null) }
+    fun pick(v: String) { vm.h.ai.update { it.copy(chatPin = v) }; vm.pickerOpen.value = false; sel = null }
+    val pinProvider = members.firstOrNull { it.key == st.chatPin.substringBefore('|') }?.provider
+    Box(Modifier.fillMaxSize().background(Color(0x99000000)).press({ vm.pickerOpen.value = false; sel = null })) {
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = 680.dp).clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)).background(C.Paper)
             .press({}).navigationBarsPadding()) {
             Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) { Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(C.Hair)) }
-            Row(Modifier.padding(start = 18.dp, end = 12.dp, top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(I18n.t("대화 모델"), style = T.title, modifier = Modifier.weight(1f))
-                Text(I18n.t("모델 설정"), style = T.small.copy(fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.pickerOpen.value = false; vm.go(Route.Ai) }).padding(8.dp))
+            Row(Modifier.padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (sel != null) Box(Modifier.size(40.dp).press({ sel = null }), contentAlignment = Alignment.Center) { Ico(I.Back, 20.dp) } else Spacer(Modifier.width(10.dp))
+                Text(sel?.label ?: I18n.t("모델"), style = T.title, modifier = Modifier.weight(1f))
             }
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-                PickRow(st.chatPin == "auto", "자동", "질문에 맞는 AI·모델을 고릅니다 · " + (vm.h.ai.chatAssignment()?.name ?: "연결된 AI 없음"), null) { pick("auto") }
-                Provider.values().forEach { p ->
-                    val mine = members.filter { it.provider == p }
-                    Row(Modifier.padding(start = 18.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ProviderMark(p, 20.dp); Spacer(Modifier.width(8.dp))
-                        Label(p.label + " · " + p.company)
-                        Spacer(Modifier.width(8.dp))
-                        Label(when { mine.any { it.transport == Transport.API } -> "API"; mine.any { it.transport == Transport.WEB } -> "키 없이"; mine.any { it.transport == Transport.APP } -> "앱 연결"; else -> "연결 안 됨" },
-                            color = if (mine.isEmpty()) C.Red else C.Mute)
-                    }
-                    if (mine.isEmpty()) Text(I18n.t("키 없이 로그인해서 쓰기 →"), style = T.small.copy(fontSize = 13.sp, color = C.Ink, fontWeight = FontWeight.SemiBold),
-                        modifier = Modifier.padding(start = 46.dp, bottom = 6.dp).press({ vm.pickerOpen.value = false; vm.loginTab.value = p; vm.go(Route.AiLogin) }).padding(vertical = 6.dp))
-                    mine.forEach { m ->
-                        when (m.transport) {
-                            Transport.API -> ModelCatalog.of(p).forEach { md ->
-                                val v = "${m.key}|${md.id}"
-                                PickRow(st.chatPin == v, md.label + if (m.accountLabel.isNotBlank()) " · ${m.accountLabel}" else "", md.note, md.tier) { pick(v) }
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                val p = sel
+                if (p == null) {
+                    PickRow(st.chatPin == "auto", I18n.t("자동"), I18n.t("질문마다 알맞은 AI를 고릅니다"), null) { pick("auto") }
+                    Provider.values().forEach { pr ->
+                        val mine = members.filter { it.provider == pr }
+                        val status = when { mine.any { it.transport == Transport.API } -> "API 키"; mine.any { it.transport == Transport.WEB } -> "로그인됨"; else -> "연결 안 됨" }
+                        val cur = if (pinProvider == pr) ModelCatalog.of(pr).firstOrNull { it.id == st.chatPin.substringAfter('|', "") }?.label ?: "${pr.label} 웹" else null
+                        Row(Modifier.fillMaxWidth().press({ sel = pr }).background(if (pinProvider == pr) C.Paper2 else Color.Transparent).padding(horizontal = 18.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                            ProviderMark(pr, 26.dp); Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(pr.label, style = T.head.copy(fontSize = 16.sp))
+                                Text(cur ?: status, style = T.small.copy(fontSize = 12.5.sp, color = if (mine.isEmpty()) C.Mute else C.Graphite))
                             }
-                            Transport.WEB -> PickRow(st.chatPin == m.key, "${p.label} 웹", "키 없이 · HJTK 안에서 로그인한 ${p.label}", null) { pick(m.key) }
-                            Transport.APP -> PickRow(st.chatPin == m.key, "${p.label} 앱", "키 없이 · 앱에서 답을 복사하고 돌아오면 받아요", null) { pick(m.key) }
+                            if (pinProvider == pr) Ico(I.Check, 18.dp) else Ico(I.Chevron, 16.dp, C.Mute)
                         }
                     }
+                } else {
+                    val api = members.firstOrNull { it.provider == p && it.transport == Transport.API }
+                    val web = members.firstOrNull { it.provider == p && it.transport == Transport.WEB }
+                    val m = api ?: web
+                    if (m == null) Column(Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
+                        Text(I18n.t("아직 연결되지 않았어요. Google 계정 하나로 한 번에 연결할 수 있어요."), style = T.small)
+                        Spacer(Modifier.height(10.dp))
+                        InkButton(I18n.t("계정으로 연결하기"), Modifier.fillMaxWidth(), accent = true) { vm.pickerOpen.value = false; sel = null; vm.loginTab.value = p; vm.go(Route.AiLogin) }
+                    }
+                    if (web != null && api == null) Text(I18n.t("키 없이 웹으로 써요 · 고른 모델은 사이트 메뉴에서 대신 골라 드려요"), style = T.small.copy(fontSize = 12.sp, color = C.Graphite), modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
+                    ModelCatalog.of(p).forEach { md ->
+                        val v = m?.let { "${it.key}|${md.id}" }
+                        PickRow(v != null && st.chatPin == v, md.label, md.note, md.tier, enabled = m != null) { if (v != null) pick(v) }
+                    }
+                    if (web != null && api == null && p != Provider.DEEPSEEK) PickRow(st.chatPin == web.key, I18n.t("사이트 기본 모델"), I18n.t("사이트에서 고른 그대로"), null) { pick(web.key) }
+                }
+            }
+            // 노력 · 창의성 · 길이 — 고르는 즉시 다음 답부터 적용
+            Hairline()
+            Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                StyleRow(I18n.t("노력"), com.ht.hjtk.engine.ChatStyle.EFFORT, style.effort) { com.ht.hjtk.engine.ChatStyle.set(style.copy(effort = it)) }
+                StyleRow(I18n.t("창의성"), com.ht.hjtk.engine.ChatStyle.CREATIVE, style.creativity) { com.ht.hjtk.engine.ChatStyle.set(style.copy(creativity = it)) }
+                StyleRow(I18n.t("길이"), com.ht.hjtk.engine.ChatStyle.LENGTH, style.length) { com.ht.hjtk.engine.ChatStyle.set(style.copy(length = it)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StyleRow(title: String, options: List<String>, value: Int, onPick: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = T.small.copy(color = C.Graphite), modifier = Modifier.width(52.dp))
+        Row(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(C.Paper2).padding(3.dp)) {
+            options.forEachIndexed { i, o ->
+                val on = i == value
+                Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (on) C.Ink else Color.Transparent).press({ onPick(i) }).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                    Text(I18n.t(o), style = T.small.copy(fontSize = 12.sp, color = if (on) C.OnInk else C.Ink2, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal), maxLines = 1)
                 }
             }
         }
@@ -87,11 +122,11 @@ fun ModelPickerSheet(vm: MainVm) {
 }
 
 @Composable
-private fun PickRow(selected: Boolean, title: String, sub: String, tier: Tier?, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().press(onClick).background(if (selected) C.Paper2 else Color.Transparent).padding(start = 46.dp, end = 16.dp, top = 9.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun PickRow(selected: Boolean, title: String, sub: String, tier: Tier?, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().press(onClick).background(if (selected) C.Paper2 else Color.Transparent).padding(start = 18.dp, end = 16.dp, top = 11.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = T.body.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal))
+                Text(title, style = T.body.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = if (enabled) C.Ink else C.Mute))
                 tier?.let { Spacer(Modifier.width(6.dp)); Text(it.label, style = T.label.copy(fontFamily = Pretendard, letterSpacing = 0.sp, fontSize = 10.5.sp, color = if (it.rank >= 2) C.Red else C.Mute)) }
             }
             Text(sub, style = T.small.copy(fontSize = 12.sp, color = C.Graphite), maxLines = 1, overflow = TextOverflow.Ellipsis)
