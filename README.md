@@ -187,7 +187,6 @@ GitHub Actions가 푸시마다 같은 테스트를 돌리고 디버그 APK를 �
 
 ## 만든 사람
 
-**허태혁 (Heo Taehyeok)** · HT
-기획 · 디자인 · 개발 — 디자인 시스템 '먹과 인장': 먹색과 종이색, 그리고 살아 있는 상태와 AI 표시에만 쓰는 주홍 하나.
+**허태혁 (Heo Taehyeok)**
 
 [MIT License](LICENSE)
