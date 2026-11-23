@@ -67,7 +67,7 @@ class AiCoreTest {
     @Test fun catalogIsConsistent() {
         val ids = CommandCatalog.ALL.map { it.id }
         assertEquals(ids.size, ids.toSet().size)
-        assertTrue(ids.containsAll(listOf("github.repos", "notion.read", "site.read", "phone.ai_call", "phone.prepare")))
+        assertTrue(ids.containsAll(listOf("github.repos", "notion.read", "site.read", "phone.ai_call", "phone.dial")))
         assertTrue(CommandCatalog.find("phone.ai_call")!!.effect.needsApproval)
         assertTrue(CommandCatalog.find("github.commit_file")!!.effect.needsApproval)
     }

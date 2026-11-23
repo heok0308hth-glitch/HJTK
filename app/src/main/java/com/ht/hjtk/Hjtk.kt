@@ -36,9 +36,11 @@ class Hjtk(val app: Context) {
     val ai = com.ht.hjtk.engine.AiHub(app, store, bridge)
     val connectors = com.ht.hjtk.engine.ConnectorHub(app, store)
     val reader = com.ht.hjtk.engine.PageReader(app)
-    val phone by lazy { com.ht.hjtk.engine.PhoneAgent(app, store, connectors, launcher) }
+    val voice by lazy { com.ht.hjtk.voice.VoiceHub(app) }
+    val caller by lazy { com.ht.hjtk.call.AiCaller(this) }
+    val phoneHandlers: Map<String, com.ht.hjtk.core.command.CommandHandler> by lazy { com.ht.hjtk.call.PhoneHandlers.of(this) }
     val pc by lazy { com.ht.hjtk.engine.PcServer(this) }
-    val connectorHandlers by lazy { connectors.handlers(reader, ai) + phone.handlers + com.ht.hjtk.engine.Routines.handlers(app) }
+    val connectorHandlers by lazy { connectors.handlers(reader, ai) + phoneHandlers + com.ht.hjtk.engine.Routines.handlers(app) }
     /** 대화용 두 번째 DeepSeek 창(작업이 주 창을 쓰는 동안만 만든다. 로그인 쿠키는 공유) */
     val deepseekChat by lazy { DeepSeekWeb(app) }
     val deepseekApp = DeepSeekAppPort(bridge, store)

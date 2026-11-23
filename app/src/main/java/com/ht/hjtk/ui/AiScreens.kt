@@ -174,7 +174,7 @@ fun AiSettingsScreen(vm: MainVm) {
                     ProviderMark(p); Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(p.label, style = T.head.copy(fontSize = 15.sp))
-                        Label(if (accs.isNotEmpty()) "계정 ${accs.size}개 · 모델 ${if (pref.model == "auto") "자동" else pref.model}" else if (p == Provider.DEEPSEEK && st.webDeepSeek) "키 없이 웹으로 사용 중" else "키 없음 · 앱 연결 ${if (pref.appRelay) "켬" else "끔"}")
+                        Label(if (accs.isNotEmpty()) "계정 ${accs.size}개 · 모델 ${if (pref.model == "auto") "자동" else pref.model}" else if (p == Provider.DEEPSEEK && st.webDeepSeek) "키 없이 웹으로 사용 중" else "키 없음 · 키를 넣으면 연결돼요")
                     }
                     Ico(if (open == p) I.Up else I.Down, 16.dp)
                 }
@@ -203,10 +203,7 @@ fun AiSettingsScreen(vm: MainVm) {
                         Column(Modifier.weight(1f)) { Text(I18n.t("깊게 생각하기"), style = T.body); Label(I18n.t("지원하는 모델에서 추론을 더 길게(느려지고 토큰↑)")) }
                         Toggle(pref.reasoning) { vm.h.ai.setPref(p) { it.copy(reasoning = !it.reasoning) } }
                     }
-                    if (p.appPkg != null) Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text("${p.label} 앱으로 연결", style = T.body); Label(I18n.t("키가 없을 때만 · 답을 복사하고 돌아오면 받아요")) }
-                        Toggle(pref.appRelay) { vm.h.ai.setPref(p) { it.copy(appRelay = !it.appRelay) } }
-                    }
+                    // 3.0: "앱으로 연결"(다른 AI 앱으로 넘기기)은 없앴다. 키(API) 또는 HJTK 안 웹만 쓴다
                     if (p == Provider.DEEPSEEK) Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text(I18n.t("DeepSeek 웹(키 없이)"), style = T.body); Label(I18n.t("앱 안에서 로그인한 DeepSeek을 씁니다")) }
                         Toggle(st.webDeepSeek) { vm.h.ai.update { it.copy(webDeepSeek = !it.webDeepSeek) } }

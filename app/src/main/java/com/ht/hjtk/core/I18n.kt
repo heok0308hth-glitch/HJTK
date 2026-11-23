@@ -54,7 +54,7 @@ object I18n {
         "입력" to "In",
         "출력" to "Out",
         "아끼는 법" to "Saving tokens",
-        "· 대화는 '빠르게' 난이도로, 깊은 검토는 필요한 작업에만.\n· 키가 있는 AI는 실제 토큰을, DeepSeek 웹·다른 AI 앱은 글자 수로 추정해요(≈).\n· 오래된 대화 기록은 자동으로 잘라 보내고, 같은 명령은 저장해 다시 쓰지 않아요." to "· Use Quick for chats; keep deep review for tasks that need it.\n· AIs with keys report real tokens; DeepSeek web and other AI apps are estimated from text length (≈).\n· Old history is trimmed automatically, and repeated commands are cached instead of regenerated.",
+        "· 대화는 '빠르게' 난이도로, 깊은 검토는 필요한 작업에만.\n· 키가 있는 AI는 실제 토큰을, DeepSeek 웹은 글자 수로 추정해요(≈).\n· 오래된 대화 기록은 자동으로 잘라 보내고, 같은 명령은 저장해 다시 쓰지 않아요." to "· Use Quick for chats; keep deep review for tasks that need it.\n· AIs with keys report real tokens; DeepSeek web is estimated from text length (≈).\n· Old history is trimmed automatically, and repeated commands are cached instead of regenerated.",
         "백업 파일 만들기" to "Create a backup file",
         "백업에서 복원" to "Restore from backup",
         "사진을 함께 보내요" to "Sending with a photo",

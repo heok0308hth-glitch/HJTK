@@ -8,6 +8,7 @@ import com.ht.hjtk.core.stream.TerminationGate
 import com.ht.hjtk.data.Role
 import com.ht.hjtk.data.Store
 import com.ht.hjtk.engine.DeepSeekWeb
+import com.ht.hjtk.core.vision.ScreenMap.Block as SmBlock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -94,5 +95,26 @@ class EngineTest {
         assertEquals("평일 09:00", wd.label())
         val back = com.ht.hjtk.engine.Routine.from(wk.toJson())
         assertEquals(wk, back)
+    }
+
+    @Test fun screenMapIsCompactAndDiffs() {
+        val a = listOf(SmBlock("설정", 40, 60, 260, 130), SmBlock("Wi-Fi", 40, 300, 200, 340), SmBlock("켜짐", 900, 300, 1000, 340, "파랑"), SmBlock("블루투스", 40, 400, 260, 440))
+        val m = com.ht.hjtk.core.vision.ScreenMap.build(1080, 2400, a)
+        assertTrue(m.contains("c0 #설정")); assertTrue(m.contains("c10 켜짐 ●파랑"))
+        assertTrue(com.ht.hjtk.core.vision.ScreenMap.tokens(m) < com.ht.hjtk.core.vision.ScreenMap.imageTokens(1080, 2400) / 5)
+        assertEquals("(직전 화면과 같아요)", com.ht.hjtk.core.vision.ScreenMap.diff(m, m))
+        val b = a.dropLast(1) + SmBlock("블루투스 끔", 40, 400, 300, 440)
+        val d = com.ht.hjtk.core.vision.ScreenMap.diff(m, com.ht.hjtk.core.vision.ScreenMap.build(1080, 2400, b))
+        assertTrue(d.contains("바뀐 줄만")); assertTrue(d.contains("블루투스 끔")); assertTrue(!d.contains("Wi-Fi"))
+    }
+
+    @Test fun aiCallGuardBlocksEmergencyAndLimits() {
+        val G = com.ht.hjtk.core.command.PhoneGuard
+        assertTrue(G.check("119", emptyList(), 0L) != null)
+        val now = 10_000_000L
+        assertEquals(null, G.check("02-123-4567", emptyList(), now))
+        assertTrue(G.check("02-123-4567", listOf("+8221234567" to now - 60_000), now)!!.contains("10분"))
+        assertTrue(G.check("010-1111-2222", List(5) { "+82100000000$it" to now - 1000L }, now)!!.contains("5통"))
+        assertTrue(G.disclosure("허태혁").contains("AI 비서"))
     }
 }

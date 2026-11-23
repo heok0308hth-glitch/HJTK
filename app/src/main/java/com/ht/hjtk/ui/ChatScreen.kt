@@ -357,7 +357,7 @@ private fun AnswerActions(vm: MainVm, text: String) {
         @Composable fun act(label: String, f: () -> Unit) = Text(if (done == label) "$label ✓" else label, style = T.small.copy(fontSize = 12.sp, color = if (done == label) C.Ink else C.Graphite, fontWeight = FontWeight.SemiBold),
             modifier = Modifier.clip(RoundedCornerShape(5.dp)).press({ f(); done = label }).padding(horizontal = 8.dp, vertical = 6.dp))
         act(I18n.t("복사")) { ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("HJTK", text)) }
-        act(I18n.t("공유")) { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text), "답 공유").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        // 3.0: 공유(다른 앱으로 보내기)는 없앴다 — 복사해서 쓰면 된다
         act(I18n.t("다시 묻기")) { vm.retryLast() }
         act(I18n.t("기억하기")) { vm.remember(text) }
     }

@@ -248,7 +248,7 @@ fun UsageScreen(vm: MainVm) {
             }
 
             SectionHead("02", I18n.t("아끼는 법"))
-            Text(I18n.t("· 대화는 '빠르게' 난이도로, 깊은 검토는 필요한 작업에만.\n· 키가 있는 AI는 실제 토큰을, DeepSeek 웹·다른 AI 앱은 글자 수로 추정해요(≈).\n· 오래된 대화 기록은 자동으로 잘라 보내고, 같은 명령은 저장해 다시 쓰지 않아요."),
+            Text(I18n.t("· 대화는 '빠르게' 난이도로, 깊은 검토는 필요한 작업에만.\n· 키가 있는 AI는 실제 토큰을, DeepSeek 웹은 글자 수로 추정해요(≈).\n· 오래된 대화 기록은 자동으로 잘라 보내고, 같은 명령은 저장해 다시 쓰지 않아요."),
                 style = T.small.copy(color = C.Ink2, fontSize = 12.5.sp), modifier = Modifier.padding(vertical = 10.dp))
         }
     }

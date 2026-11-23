@@ -266,14 +266,12 @@ class AndroidTools(
         }.getOrElse { fail("손전등을 쓸 수 없음") } }
         put("map.open") { c ->
             val q = c.arg("q")
-            val i = if (c.arg("app") != "google" && installed("com.nhn.android.nmap")) Intent(Intent.ACTION_VIEW, Uri.parse("nmap://search?query=${enc(q)}&appname=com.ht.hjtk"))
-            else Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=${enc(q)}"))
+            val i = Intent(Intent.ACTION_VIEW, Uri.parse(if (c.arg("app") == "google") "https://www.google.com/maps/search/${enc(q)}" else "https://m.map.naver.com/search2/search.naver?query=${enc(q)}"))
             launch(i, "지도", q)
         }
         put("map.route") { c ->
             val to = c.arg("to"); val mode = c.arg("mode", "transit")
-            val i = if (installed("com.nhn.android.nmap")) Intent(Intent.ACTION_VIEW, Uri.parse("nmap://route/${if (mode == "car") "car" else if (mode == "walk") "walk" else "public"}?dname=${enc(to)}&appname=com.ht.hjtk"))
-            else Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${enc(to)}&travelmode=${if (mode == "car") "driving" else if (mode == "walk") "walking" else "transit"}"))
+            val i = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${enc(to)}&travelmode=${if (mode == "car") "driving" else if (mode == "walk") "walking" else "transit"}"))
             launch(i, "길찾기", to)
         }
         put("translate.open") { c ->
@@ -385,12 +383,9 @@ class AndroidTools(
 
     // ── 보조 구현 ────────────────────────────────────────────────
     private suspend fun gemini(prompt: String): String? {
+        // 3.0: Gemini 앱으로 넘기지 않는다. 키가 있으면 API, 없으면 HJTK 안 DeepSeek 두 번째 창이 대신 본다
         if (h.gemini.available()) h.gemini.ask(prompt)?.let { return it }
-        if (budget.left <= 0) return null
-        budget.left--
-        val s = store.settings.value
-        val r = h.bridge.ask(ExternalAiBridge.GEMINI, prompt, useWeb = s.geminiMode == "web", waitMs = s.geminiWaitMin * 60_000L, jobTag = jobId)
-        return r.text.ifBlank { null }
+        return runCatching { h.runner.callAsk(prompt, "second:$jobId") }.getOrNull()?.ifBlank { null }
     }
 
     private suspend fun fetch(url: String, max: Int): CommandResult = runCatching {

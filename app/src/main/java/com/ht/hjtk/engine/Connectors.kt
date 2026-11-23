@@ -39,14 +39,13 @@ import kotlin.coroutines.resume
 enum class Service(val label: String, val tokenHint: String, val help: String) {
     GITHUB("GitHub", "개인 액세스 토큰(ghp_… 또는 github_pat_…)", "github.com → Settings → Developer settings → Personal access tokens"),
     NOTION("Notion", "내부 통합 토큰(ntn_… 또는 secret_…)", "notion.so/my-integrations → 새 통합 → 연결할 페이지에서 '연결 추가'"),
-    NAVER_API("네이버 검색 API", "Client ID:Client Secret", "developers.naver.com → 애플리케이션 등록 → 검색 API"),
-    BLAND("Bland AI (AI 전화)", "API 키", "bland.ai 대시보드 → Settings → API key · 통화당 요금이 나가요"),
-    VAPI("Vapi (AI 전화)", "API키:어시스턴트ID:전화번호ID", "dashboard.vapi.ai에서 어시스턴트와 번호를 만든 뒤 세 값을 콜론으로 이어서")
+    NAVER_API("네이버 검색 API", "Client ID:Client Secret", "developers.naver.com → 애플리케이션 등록 → 검색 API")
 }
 
 data class ConnAccount(val id: String, val service: Service, val label: String, val isDefault: Boolean) {
     fun toJson() = JSONObject().put("id", id).put("s", service.name).put("label", label).put("def", isDefault)
-    companion object { fun from(o: JSONObject) = ConnAccount(o.getString("id"), Service.valueOf(o.getString("s")), o.optString("label"), o.optBoolean("def")) }
+    // 3.0에서 유료 AI 전화(Bland·Vapi) 계정을 뺐다: 예전 기록은 읽을 때 조용히 건너뛴다
+    companion object { fun from(o: JSONObject): ConnAccount? = Service.values().firstOrNull { it.name == o.optString("s") }?.let { ConnAccount(o.getString("id"), it, o.optString("label"), o.optBoolean("def")) } }
 }
 
 class ConnectorHub(private val ctx: Context, private val store: Store) {
@@ -55,7 +54,7 @@ class ConnectorHub(private val ctx: Context, private val store: Store) {
     /** 로그인 브라우저에서 사용자가 로그인해 둔 사이트(쿠키는 WebView 공용) */
     val sessions = MutableStateFlow(loadSessions())
 
-    private fun load(): List<ConnAccount> = runCatching { JSONObject(file.readText()).optJSONArray("acc")?.let { a -> (0 until a.length()).map { ConnAccount.from(a.getJSONObject(it)) } } }.getOrNull().orEmpty()
+    private fun load(): List<ConnAccount> = runCatching { JSONObject(file.readText()).optJSONArray("acc")?.let { a -> (0 until a.length()).mapNotNull { ConnAccount.from(a.getJSONObject(it)) } } }.getOrNull().orEmpty()
     private fun loadSessions(): List<String> = runCatching { JSONObject(file.readText()).optJSONArray("ses")?.let { a -> (0 until a.length()).map { a.getString(it) } } }.getOrNull().orEmpty()
     private fun save() = runCatching { file.parentFile?.mkdirs(); file.writeText(JSONObject().put("acc", JSONArray(accounts.value.map { it.toJson() })).put("ses", JSONArray(sessions.value)).toString()) }
 

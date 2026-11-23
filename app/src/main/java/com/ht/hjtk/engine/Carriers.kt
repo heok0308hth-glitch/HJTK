@@ -138,7 +138,8 @@ class ExternalAiBridge(private val ctx: Context, private val launcher: Launcher)
     /** 사용자 1탭(백그라운드 액티비티 시작 제한 때문에) → 대상 앱에 프롬프트 전달. 답은 클립보드·공유 중 먼저 온 것. */
     /** 다른 AI 앱에 보내고 답을 받는다. 사용량은 글자 수로 추정해 기록한다(앱은 토큰을 알려 주지 않는다) */
     suspend fun ask(t: Target, prompt: String, useWeb: Boolean, waitMs: Long, jobTag: String): LlmReply =
-        askRaw(t, prompt, useWeb, waitMs, jobTag).also { r ->
+        // 3.0: 다른 AI 앱으로 넘기지 않는다(키가 있는 API 또는 HJTK 안 DeepSeek 웹만 쓴다)
+        if (!ALLOW_APP_SWITCH) LlmReply("", "NO_APP_SWITCH", false, 0) else askRaw(t, prompt, useWeb, waitMs, jobTag).also { r ->
             if (r.text.isNotBlank()) UsageLog.add("${t.name} 앱", com.ht.hjtk.core.ai.Tokens.estimate(prompt), com.ht.hjtk.core.ai.Tokens.estimate(r.text))
         }
 
@@ -165,8 +166,12 @@ class DeepSeekAppPort(private val bridge: ExternalAiBridge, private val store: S
         bridge.ask(ExternalAiBridge.DEEPSEEK_APP, text, false, store.settings.value.geminiWaitMin * 60_000L, jobId)
 }
 
-fun openCustomTab(ctx: Context, url: String) {
-    runCatching {
-        CustomTabsIntent.Builder().setShowTitle(true).build().apply { intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }.launchUrl(ctx, Uri.parse(url))
-    }.onFailure { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+/** 예전 이름 유지: 이제 바깥 브라우저 대신 HJTK 안 브라우저로 연다 */
+fun openCustomTab(ctx: Context, url: String) = openInApp(ctx, url)
+
+/** 3.0: 다른 앱으로 넘어가는 경로는 꺼 둔다 */
+const val ALLOW_APP_SWITCH = false
+
+fun openInApp(ctx: Context, url: String) {
+    ctx.startActivity(Intent(ctx, com.ht.hjtk.MainActivity::class.java).putExtra("route", "web").putExtra("url", url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
 }

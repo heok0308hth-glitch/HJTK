@@ -92,7 +92,6 @@ class JobRunner(private val h: Hjtk) {
         val s = store.settings.value
         return when {
             s.dsMode == "api" && h.deepseekApi.available() -> h.deepseekApi
-            s.dsMode == "app" -> h.deepseekApp
             else -> h.deepseek
         }
     }
@@ -201,8 +200,7 @@ class JobRunner(private val h: Hjtk) {
 
     private fun criticFor(jobId: String, budget: TapBudget): LlmPort? = when (store.settings.value.collab) {
         "off" -> null
-        "gemini" -> if (h.gemini.available()) GeminiApiPort() else GeminiRelayPort(budget)
-        "gemini_app" -> GeminiRelayPort(budget)
+        "gemini", "gemini_app" -> if (h.gemini.available()) GeminiApiPort() else JobLlm(jobId, h.deepseekChat, critic = true)
         "deepseek2" -> JobLlm(jobId, port(), critic = true)
         else -> if (h.gemini.available()) GeminiApiPort() else JobLlm(jobId, port(), critic = true)
     }
@@ -426,14 +424,32 @@ class JobRunner(private val h: Hjtk) {
             val conv = live.values.firstOrNull()?.convId
             if (f != null && conv != null) store.msg(conv, Role.USER, "화면을 보냈어요", "image", mapOf("image" to f.absolutePath))
             val text = when {
-                f != null -> h.ai.see(listOf(f), "사용자가 도움을 요청한 휴대폰 화면이다. 이유: $reason\n화면에 보이는 앱, 글자, 버튼, 오류 메시지, 현재 상태를 빠짐없이 적어라.")
-                    ?.let { (who, desc) -> "사용자가 보낸 화면을 $who 가 읽었다:\n$desc\n(스크린샷: ${f.name})" }
-                    ?: "사용자가 화면을 보냈다(스크린샷 ${f.name} 저장). 그림을 볼 수 있는 AI(Claude·GPT·Gemini 키)가 없어 내용은 읽지 못했다. 필요하면 task.ask로 화면 내용을 글로 물어보라."
+                f != null -> screenText(f, reason, conv)
                 extraText != null -> extraText
                 else -> "사용자가 화면 보내기를 취소했다. 필요하면 task.ask로 상황을 글로 물어보라."
             }
             d.complete(text)
         }
+    }
+
+    private val lastMap = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * 화면을 AI에게: 먼저 기기에서 글자를 읽어 '글자 지도'로 보낸다(토큰 70~85% 절약, 그림 못 보는 AI도 읽음).
+     * 글자가 거의 없는 화면일 때만 그림을 768px로 줄여 그림 보는 AI에게 보낸다.
+     */
+    private suspend fun screenText(f: java.io.File, reason: String, conv: String?): String {
+        val r = com.ht.hjtk.engine.ScreenReader.read(f)
+        if (r != null && r.enough) {
+            val key = conv ?: "screen"
+            val sent = com.ht.hjtk.core.vision.ScreenMap.diff(lastMap[key], r.map); lastMap[key] = r.map
+            conv?.let { store.msg(it, Role.SYSTEM, "화면을 글자 지도로 읽었어요 · 약 ${com.ht.hjtk.core.vision.ScreenMap.tokens(sent)}토큰(그림이면 약 ${com.ht.hjtk.core.vision.ScreenMap.imageTokens(r.w, r.h)})", "note") }
+            return "사용자가 보낸 휴대폰 화면(이유: $reason)을 기기에서 글자로 읽은 지도다. 위치는 줄·칸 번호로 표시된다.\n$sent\n(스크린샷: ${f.name})"
+        }
+        val small = com.ht.hjtk.engine.ScreenReader.small(f, java.io.File(f.parentFile, "s_" + f.nameWithoutExtension + ".jpg"))
+        return h.ai.see(listOf(small), "사용자가 도움을 요청한 휴대폰 화면이다. 이유: $reason\n화면에 보이는 앱, 글자, 버튼, 오류 메시지, 현재 상태를 짧게 적어라.")
+            ?.let { (who, desc) -> "사용자가 보낸 화면을 $who 가 읽었다:\n$desc\n(스크린샷: ${f.name})" }
+            ?: "사용자가 화면을 보냈다(스크린샷 ${f.name}). 글자가 거의 없는 화면이고 그림을 볼 수 있는 AI(Claude·GPT·Gemini 키)가 없어 내용은 읽지 못했다. 필요하면 task.ask로 화면 내용을 글로 물어보라."
     }
 
     suspend fun pickFile(jobId: String, hint: String): String? {
@@ -526,6 +542,25 @@ class JobRunner(private val h: Hjtk) {
      * 실시간 음성: 가장 빠른 AI(음성 역할 · 빠른 등급)로 짧게. 글자는 LiveBus("live")로 흘러서 화면이 문장 단위로 읽어 준다.
      */
     private val livePorts = ConcurrentHashMap<String, LlmPort>()
+    /** AI 통화용 한 번 묻기: 통화마다 같은 대화방(맥락 유지). 키 있는 빠른 AI가 있으면 그쪽, 없으면 DeepSeek 웹 */
+    suspend fun callAsk(prompt: String, key: String): String {
+        val a = com.ht.hjtk.core.ai.ModelRouter.pick(AiRole.LIVE, com.ht.hjtk.core.ai.Difficulty.QUICK, h.ai.members().filter { it.transport == com.ht.hjtk.core.ai.Transport.API })
+        if (a != null) {
+            val port = livePorts.getOrPut("call:" + a.member.key + key) { h.ai.apiPort(a, key, stateless = false) ?: return "" }
+            return port.send(prompt, key, 1, false).text
+        }
+        val lane = if (llmLock.isLocked) h.deepseekChat else h.deepseek
+        val lock = if (lane === h.deepseek) llmLock else chatLock
+        val r = lock.withLock {
+            val sess = criticSessions[key]
+            if (sess != null) lane.ensureSession(sess)
+            val rr = lane.send(prompt, key, 1, sess == null)
+            lane.currentUrl()?.takeIf { it.contains("/a/") || it.contains("/chat/") }?.let { criticSessions[key] = it }
+            rr
+        }
+        return com.ht.hjtk.core.stream.AepView.clean(r.text)
+    }
+
     suspend fun liveAsk(text: String, en: Boolean): Pair<String, String> {
         val prompt = (if (en) "[Voice chat] Answer naturally in 2-4 short spoken sentences. No lists, tables or markdown.\n" else "[음성 대화] 말하듯이 2~4문장으로 짧게. 목록·표·마크다운 없이.\n") + text
         val a = com.ht.hjtk.core.ai.ModelRouter.pick(AiRole.LIVE, com.ht.hjtk.core.ai.Difficulty.QUICK, h.ai.members().filter { it.transport != com.ht.hjtk.core.ai.Transport.APP })
@@ -571,6 +606,18 @@ class JobRunner(private val h: Hjtk) {
     private suspend fun askWithImage(convId: String, q: String, img: java.io.File) {
         val a = h.ai.chatAssignment()
         val question = q.ifBlank { if (com.ht.hjtk.core.I18n.en) "Describe this image and tell me what matters." else "이 사진에서 중요한 내용을 알려 줘." }
+        // 1) 글자가 많은 사진(화면·문서·영수증)은 글자 지도로: 어느 AI든 읽고 토큰이 훨씬 적다
+        val read = com.ht.hjtk.engine.ScreenReader.read(img, "사진")
+        if (read != null && read.enough) {
+            val r = chatSend(convId, "[사용자가 보낸 사진을 기기에서 글자로 읽은 지도 — 그림 대신 글자 위치]\n${read.map}\n\n[질문]\n$question\n\n(글자만으로 답할 수 없는 질문(색·모양·사람·물건 생김새)이면 정확히 [[사진 필요]] 한 줄만 써라)", a)
+            val txt = com.ht.hjtk.core.stream.AepView.clean(r.text)
+            if (txt.isNotBlank() && !txt.contains("[[사진 필요]]")) {
+                store.msg(convId, Role.AI, txt, "text", mapOf("via" to r.via, "who" to (a?.name ?: "DeepSeek") + " · 글자 지도", "saved" to read.saved.toString()))
+                return
+            }
+        }
+        // 2) 그림이 꼭 필요할 때만 768px로 줄여 그림 보는 AI에게
+        val img = com.ht.hjtk.engine.ScreenReader.small(img, java.io.File(img.parentFile, "s_" + img.nameWithoutExtension + ".jpg"))
         if (h.ai.canSee(a)) {
             val port = (chatPorts.getOrPut(a!!.member.key + "|" + (a.model?.id ?: "")) { h.ai.apiPort(a, "", stateless = false) ?: return }) as? com.ht.hjtk.engine.ApiPort
             if (port != null) {

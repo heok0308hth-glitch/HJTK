@@ -71,10 +71,9 @@ fun SettingsScreen(vm: MainVm) {
             SectionHead("01", I18n.t("AI 연결 — 메인 2개"))
             Spacer(Modifier.height(10.dp)); Label(I18n.t("DeepSeek · 두뇌(계획·판단)"))
             Spacer(Modifier.height(6.dp))
-            Segmented(listOf("web" to "내장 웹(권장)", "app" to "DeepSeek 앱", "api" to "API 키"), s.dsMode) { m -> vm.store.updateSettings { it.copy(dsMode = m) } }
+            Segmented(listOf("web" to "내장 웹(권장)", "api" to "API 키"), if (s.dsMode == "app") "web" else s.dsMode) { m -> vm.store.updateSettings { it.copy(dsMode = m) } }
             Text(when (s.dsMode) {
                 "web" -> "앱 안의 DeepSeek 화면에 한 번 로그인하면, 키 없이 답 전문을 스트림에서 직접 읽습니다. 가장 자동적인 경로."
-                "app" -> "설치된 DeepSeek 앱으로 보냅니다. 답을 복사하고 HJTK로 돌아오면 자동으로 받아요('공유 → HJTK'도 돼요). 단계마다 사람 손이 들 수 있어요."
                 else -> "DeepSeek Platform 키가 있을 때만 동작합니다(선택). 가장 빠르고 안정적이지만 필수가 아닙니다."
             }, style = T.small.copy(fontSize = 12.5.sp), modifier = Modifier.padding(top = 6.dp))
             NumRow(1, I18n.t("조종석 — DeepSeek 화면"), when (ds) { DeepSeekWeb.Status.READY -> "로그인됨"; DeepSeekWeb.Status.LOGIN -> "로그인이 필요해요"; DeepSeekWeb.Status.CHALLENGE -> "확인이 필요해요"; else -> "열어서 확인" },
@@ -90,19 +89,14 @@ fun SettingsScreen(vm: MainVm) {
             Segmented(listOf("auto" to "자동", "gemini" to "Gemini", "deepseek2" to "DeepSeek 2창", "off" to "끄기"), s.collab) { m -> vm.store.updateSettings { it.copy(collab = m) } }
             Text(when (s.collab) {
                 "auto" -> "Gemini API 키가 있으면 Gemini가, 없으면 DeepSeek의 두 번째 대화방이 계획을 고르고 결과물을 검증해요. 사람 손이 들지 않아요."
-                "gemini" -> if (vm.h.gemini.available()) "Gemini(API 키)가 검토합니다." else "키가 없어서 Gemini 앱으로 보내요. 답을 복사하고 돌아오면 자동으로 받아요(작업당 최대 2번)."
+                "gemini" -> if (vm.h.gemini.available()) "Gemini(API 키)가 검토합니다." else "Gemini 키가 없어서 DeepSeek 두 번째 창이 대신 검토해요."
                 "deepseek2" -> "DeepSeek을 별도 대화방에서 '검토자'로 씁니다. 작성자와 맥락이 섞이지 않아요."
                 else -> "검토 없이 작성자 혼자 진행합니다(빠르지만 품질 확인이 약해요)."
             }, style = T.small.copy(fontSize = 12.5.sp), modifier = Modifier.padding(top = 6.dp))
             Spacer(Modifier.height(14.dp)); Label(I18n.t("Gemini · 검토자(교차 검증)"))
             Spacer(Modifier.height(6.dp))
-            Segmented(listOf("app" to "Gemini 앱", "web" to "웹(브라우저)", "api" to "API 키"), s.geminiMode) { m -> vm.store.updateSettings { it.copy(geminiMode = m) } }
-            Text(I18n.t("Google 정책상 앱 안 화면(WebView)에서는 Gemini에 로그인할 수 없어요. 그래서 Gemini는 앱·브라우저로 보내고, 답은 복사 후 돌아오면 자동으로(또는 '공유 → HJTK' 1탭으로) 받습니다. 작업당 최대 2번까지만 사람을 부릅니다.") +
-                (if (vm.h.bridge.installed(ExternalAiBridge.GEMINI)) "" else "\n(Gemini 앱이 설치되어 있지 않아요)"), style = T.small.copy(fontSize = 12.5.sp), modifier = Modifier.padding(top = 6.dp))
-            Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(I18n.t("Gemini 답 기다리는 시간"), style = T.body, modifier = Modifier.weight(1f))
-                listOf(5, 10, 20).forEach { m -> Spacer(Modifier.width(6.dp)); Chip("${m}분", s.geminiWaitMin == m) { vm.store.updateSettings { it.copy(geminiWaitMin = m) } } }
-            }
+            Text(I18n.t("Gemini는 API 키로 연결해요(무료 등급 있음 · 아래 02). HJTK는 다른 앱으로 넘어가지 않아서, 키가 없으면 DeepSeek의 두 번째 창이 검토를 맡아요."),
+                style = T.small.copy(fontSize = 12.5.sp), modifier = Modifier.padding(top = 6.dp))
 
             SectionHead("02", I18n.t("API 키 — 선택 사항"))
             Text(I18n.t("없어도 모든 기능이 동작합니다. 넣으면 해당 경로가 빨라질 뿐이에요. 키는 Android Keystore로 암호화되어 이 기기에만 저장됩니다."), style = T.small.copy(fontSize = 12.5.sp), modifier = Modifier.padding(vertical = 8.dp))

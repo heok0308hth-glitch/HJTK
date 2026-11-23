@@ -143,8 +143,7 @@ class AiHub(private val ctx: Context, private val store: Store, private val brid
             accs.sortedByDescending { it.isDefault }.forEach { a -> out += Member(p, Transport.API, a.id, if (accs.size > 1) a.label else "", pin) }
         }
         if (s.webDeepSeek) out += Member(Provider.DEEPSEEK, Transport.WEB)
-        Provider.values().filter { it.appPkg != null && s.pref(it).appRelay && installed(it.appPkg!!) && out.none { m -> m.provider == it && m.transport == Transport.API } }
-            .forEach { out += Member(it, Transport.APP) }
+        // 3.0: 다른 AI 앱으로 넘기는 연결(Transport.APP)은 만들지 않는다 — 키(API) 또는 HJTK 안 웹만
         return out
     }
 

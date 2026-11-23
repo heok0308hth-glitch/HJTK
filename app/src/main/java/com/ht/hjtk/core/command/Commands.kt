@@ -126,16 +126,14 @@ object CommandCatalog {
         // ── 연락 ─────────────────────────────────────────────────
         c("contact.find", "연락처 찾기", Category.COMM, Effect.READ, "name*:이름", "기기 연락처 검색", "연락처"),
         c("sms.draft", "문자 작성", Category.COMM, Effect.LOCAL, "to*:번호|body*:내용", "문자 앱에 내용을 채워 연다(보내기는 사용자)", "문자"),
-        c("call.dial", "전화 걸기 준비", Category.COMM, Effect.LOCAL, "number*:번호", "전화 앱에 번호를 채운다(통화는 사용자)", "전화"),
-        c("share.text", "공유하기", Category.COMM, Effect.EXTERNAL, "text*:내용|title:제목", "공유 시트로 다른 앱에 보낸다", "공유"),
-        c("kakao.send", "카카오톡으로 보내기", Category.COMM, Effect.EXTERNAL, "text*:내용", "카카오톡 공유 화면을 연다", "카톡"),
+        c("call.dial", "전화 걸기 준비", Category.COMM, Effect.LOCAL, "number*:번호", "HJTK 다이얼에 번호를 채운다(통화는 사용자)", "전화"),
+        c("share.text", "보낼 글 복사", Category.COMM, Effect.LOCAL, "text*:내용|title:제목", "다른 앱으로 넘기지 않고 클립보드에 복사한다(사용자가 붙여넣기)", "공유"),
+        c("kakao.send", "카톡용 글 복사", Category.COMM, Effect.LOCAL, "text*:내용", "카카오톡에 붙여넣을 글을 클립보드에 복사한다(앱은 열지 않음)", "카톡"),
 
         // ── 기기 ─────────────────────────────────────────────────
         c("alarm.set", "알람", Category.DEVICE, Effect.LOCAL, "time*:HH:mm|label:이름", "시계 앱에 알람 설정", "알람"),
         c("timer.start", "타이머", Category.DEVICE, Effect.LOCAL, "seconds*:초|label:이름", "타이머 시작", "타이머"),
-        c("app.open", "앱 열기", Category.DEVICE, Effect.LOCAL, "name*:앱이름이나 패키지", "설치된 앱 실행", "앱"),
         c("app.list", "앱 목록", Category.DEVICE, Effect.READ, "q:필터", "설치된 앱(실행 가능) 목록", "앱목록"),
-        c("settings.open", "설정 열기", Category.DEVICE, Effect.LOCAL, "page*:wifi/bluetooth/display/sound/battery/apps/location", "시스템 설정 화면", "설정"),
         c("clipboard.copy", "복사", Category.DEVICE, Effect.LOCAL, "text*:내용", "클립보드에 복사", "복사"),
         c("notify.post", "알림 띄우기", Category.DEVICE, Effect.LOCAL, "title*:제목|body:내용", "기기 알림", "알림"),
         c("device.battery", "배터리", Category.DEVICE, Effect.READ, "", "배터리 잔량·충전 상태", "배터리"),

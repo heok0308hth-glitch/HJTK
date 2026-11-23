@@ -105,7 +105,28 @@ object Notifier {
 
 /** 다른 앱 띄우기. 앱이 화면에 있으면 바로, 아니면 '탭하면 실행' 알림(사용자 제스처 게이트). */
 class Launcher(private val ctx: Context) {
+    /**
+     * 3.0 원칙: HJTK는 다른 앱으로 넘어가지 않는다.
+     *  웹 주소 → HJTK 안 브라우저 · 전화번호 → HJTK 다이얼 · 보낼 글 → 클립보드
+     *  알람·타이머처럼 화면 없이 처리되는 것(SKIP_UI)만 시스템에 맡기고, 나머지는 거절한다.
+     */
     fun launch(intent: Intent, title: String, body: String, customTab: Boolean = false): String {
+        val data = intent.data
+        val inner = (intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT))
+        when {
+            data != null && (data.scheme == "http" || data.scheme == "https") -> { openInApp(ctx, data.toString()); return "HJTK 안 브라우저로 열었어요" }
+            data?.scheme == "tel" -> {
+                ctx.startActivity(Intent(Intent.ACTION_DIAL, data).setClass(ctx, com.ht.hjtk.call.CallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return "HJTK 다이얼에 번호를 채웠어요(통화 버튼은 직접)"
+            }
+            intent.action == Intent.ACTION_SEND || inner?.action == Intent.ACTION_SEND -> {
+                val t = (inner ?: intent).getStringExtra(Intent.EXTRA_TEXT)
+                if (t != null) { Clip.copy(ctx, t, false); return "다른 앱으로 넘기지 않고 클립보드에 복사했어요(${t.length}자). 붙여넣어 쓰세요." }
+                return "HJTK는 다른 앱으로 보내지 않아요. 파일은 '파일' 탭에서 저장할 수 있어요."
+            }
+            intent.getBooleanExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, false) -> Unit   // 화면 전환 없이 처리됨
+            else -> return "HJTK는 다른 앱으로 넘어가지 않아요($title). 필요하면 사용자에게 직접 하도록 안내하세요."
+        }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (AppVisibility.foreground.value) {
             return runCatching {

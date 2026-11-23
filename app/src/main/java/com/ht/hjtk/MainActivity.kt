@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
             vm.newChat(); vm.store.msg(vm.convId.value, Role.SYSTEM, "공유받은 내용", "note"); vm.draft.value = t
         }
         i.getStringExtra("sharedImage")?.let { path -> vm.newChat(); vm.attachImage(android.net.Uri.fromFile(java.io.File(path))) }
+        i.getStringExtra("number")?.let { vm.phonePrefill.value = it }
         when (val r = i.getStringExtra("route")) {
             null -> {}
             "tasks" -> vm.tab(Route.Tasks)
@@ -56,6 +57,8 @@ class MainActivity : ComponentActivity() {
             "task" -> { vm.newChat(); vm.mode.value = Mode.MISSION }
             "live" -> vm.go(Route.Live)
             "pc" -> vm.go(Route.Pc)
+            "phone" -> vm.go(Route.Phone)
+            "web" -> i.getStringExtra("url")?.let { vm.openWeb(it) }
             else -> when {
                 r.startsWith("job:") -> vm.go(Route.Job(r.removePrefix("job:")))
                 r.startsWith("need:") -> {

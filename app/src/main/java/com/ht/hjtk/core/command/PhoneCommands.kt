@@ -1,21 +1,18 @@
 package com.ht.hjtk.core.command
 
 /**
- * AI에게 전화 시키기 — 사전 항목과 안전 규칙(순수 코드, JVM 테스트 가능).
- *
- * 안드로이드는 제3자 앱이 일반 통화에 목소리를 넣거나 상대 목소리를 듣는 것을 허용하지 않는다.
- * 그래서 두 갈래로 나눈다.
- *  1) phone.prepare — 키 없이: AI가 대본을 쓰고, 전화 앱에 번호를 채우고, 대본을 알림으로 띄운다. 통화는 사용자가.
- *  2) phone.ai_call — 선택 계정(Bland AI 또는 Vapi): 클라우드 음성 AI가 실제로 전화를 걸어 대화하고, 앱은 결과(요약·대화록)를 받아 온다.
+ * AI 전화 — 사전 항목과 안전 규칙(순수 코드, JVM 테스트 가능).
+ * 3.0: 전부 기기 안에서, 무료로. 말하는 소리는 기기 음성 엔진(내 목소리), 통화는 HJTK 통화 화면.
+ *  - phone.dial      번호를 채운 HJTK 다이얼을 연다(통화 버튼은 사용자)
+ *  - phone.ai_call   대본을 짜고 미리 녹음한 뒤 건다. 사용자가 상대 반응을 누르면 AI가 내 목소리로 대답
  */
 object PhoneCommands {
     private fun spec(id: String, title: String, e: Effect, params: String, desc: String, alias: String) = CommandSpec(id, title, Category.COMM, e,
         params.split('|').map { p -> Param(p.substringBefore(':').trimEnd('*'), p.substringAfter(':', ""), p.substringBefore(':').endsWith("*")) }, desc, listOf(alias))
 
     val specs: List<CommandSpec> = listOf(
-        spec("phone.prepare", "통화 준비", Effect.LOCAL, "number*:번호|script*:대본(요점·물어볼 것)", "전화 앱에 번호를 채우고 대본을 알림으로 띄운다(통화는 사용자)", "통화준비"),
-        spec("phone.ai_call", "AI가 전화 걸기", Effect.MONEY, "number*:번호|goal*:통화 목적(무엇을 알아내거나 요청할지)|facts:AI가 말해도 되는 정보(이름·예약 시간 등)|minutes:최대 통화 분(기본 5)", "클라우드 음성 AI가 대신 통화하고 요약·대화록을 가져온다(유료 계정 필요)", "ai전화"),
-        spec("phone.call_result", "AI 통화 결과", Effect.READ, "id*:통화 ID", "진행 중이거나 끝난 AI 통화의 상태·요약", "통화결과")
+        spec("phone.dial", "전화 다이얼", Effect.LOCAL, "number*:번호", "번호를 채운 HJTK 다이얼을 연다(통화 버튼은 사용자)", "전화걸기"),
+        spec("phone.ai_call", "AI가 전화 걸기", Effect.MONEY, "number*:번호|goal*:통화 목적(무엇을 알아내거나 요청할지)|facts:AI가 말해도 되는 정보(이름·예약 시간 등)", "기기 안 음성(내 목소리)으로 대본을 미리 녹음하고 건다 · 사용자가 반응을 고르면 대답 · 대화록을 돌려준다", "ai전화"),
     )
 }
 

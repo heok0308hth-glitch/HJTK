@@ -12,8 +12,10 @@ android {
         applicationId = "com.ht.hjtk"
         minSdk = 28
         targetSdk = 35
-        versionCode = 7
-        versionName = "2.1.0"
+        versionCode = 8
+        versionName = "3.0.0"
+        // 음성 엔진(onnxruntime)·글자 인식은 64비트 ARM만 싣는다: 요즘 폰은 전부 arm64, 용량은 절반
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     signingConfigs {
@@ -47,6 +49,8 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     packaging {
+        // 음성·글자 인식 엔진(.so)을 압축해서 싣는다: 설치 파일이 약 15MB 작아진다(설치 때 한 번 풀림)
+        jniLibs { useLegacyPackaging = true }
         resources {
             excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.md")
             // mailcap·javamail.* 는 지우면 안 된다: 메일 본문 인코딩(DataContentHandler)이 이 파일로 등록된다
@@ -85,6 +89,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.sun.mail:android-mail:1.6.7")
     implementation("com.sun.mail:android-activation:1.6.7")
+    // 3.0: 기기 안 음성(내 목소리) · 화면 글자 인식(사진 대신 글자로 보내 토큰 절약)
+    implementation(project(":voicecore"))
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

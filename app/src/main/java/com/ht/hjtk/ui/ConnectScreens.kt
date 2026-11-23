@@ -96,11 +96,12 @@ fun ScreenHead(vm: MainVm, title: String, sub: String) {
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun BrowserScreen(vm: MainVm) {
-    var url by remember { mutableStateOf("https://nid.naver.com/nidlogin.login") }
+    val target by vm.webUrl.collectAsState()
+    var url by remember(target) { mutableStateOf(target.ifBlank { "https://nid.naver.com/nidlogin.login" }) }
     var cur by remember { mutableStateOf("") }
     var web by remember { mutableStateOf<WebView?>(null) }
     Column(Modifier.fillMaxSize().background(C.Paper)) {
-        ScreenHead(vm, "로그인 브라우저", "로그인하면 AI가 이 세션으로 페이지를 읽을 수 있어요")
+        ScreenHead(vm, if (target.isBlank()) "로그인 브라우저" else "HJTK 브라우저", if (target.isBlank()) "로그인하면 AI가 이 세션으로 페이지를 읽을 수 있어요" else "다른 앱으로 넘어가지 않고 여기서 열어요")
         Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             BasicTextField(url, { url = it }, singleLine = true, textStyle = T.small.copy(fontSize = 13.sp), cursorBrush = SolidColor(C.Ink),
                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(6.dp)).background(C.Paper2).padding(10.dp))
@@ -110,9 +111,14 @@ fun BrowserScreen(vm: MainVm) {
             AndroidView({ c -> WebView(c).apply {
                 settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.allowFileAccess = false
                 CookieManager.getInstance().setAcceptCookie(true)
-                webViewClient = object : WebViewClient() { override fun onPageFinished(v: WebView, u: String?) { cur = u.orEmpty(); CookieManager.getInstance().flush() } }
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(v: WebView, u: String?) { cur = u.orEmpty(); CookieManager.getInstance().flush() }
+                    // 앱 열기 링크(intent:// market:// 등)는 따라가지 않는다: HJTK 밖으로 나가지 않기
+                    override fun shouldOverrideUrlLoading(v: WebView, r: android.webkit.WebResourceRequest): Boolean = r.url.scheme !in setOf("http", "https")
+                }
                 loadUrl(url); web = this
             } }, Modifier.fillMaxSize(), onRelease = { it.destroy() })
+            LaunchedEffect(target) { if (target.isNotBlank()) web?.loadUrl(target) }
         }
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
             val host = runCatching { android.net.Uri.parse(cur).host.orEmpty() }.getOrDefault("")
@@ -121,36 +127,4 @@ fun BrowserScreen(vm: MainVm) {
     }
 }
 
-/** AI 전화: 대본 받고 직접 걸기(무료) / AI가 대신 걸기(선택 계정 · 매번 '실행' 승인) */
-@Composable
-fun PhoneScreen(vm: MainVm) {
-    var number by remember { mutableStateOf("") }
-    var goal by remember { mutableStateOf("") }
-    var facts by remember { mutableStateOf("") }
-    val provider = remember { vm.h.phone.available() }
-    Column(Modifier.fillMaxSize().background(C.Paper)) {
-        ScreenHead(vm, "AI 전화", provider?.let { "$it 연결됨 · 통화마다 허락을 받아요" } ?: "키 없이도 대본 받고 직접 걸 수 있어요")
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) {
-            Label(I18n.t("번호")); Field(number, I18n.t("예: 02-123-4567")) { number = it }
-            Spacer(Modifier.height(10.dp)); Label(I18n.t("통화 목적"))
-            Field(goal, I18n.t("예: 토요일 저녁 7시 4명 예약 가능한지 묻고, 되면 예약해 줘"), multi = true) { goal = it }
-            Spacer(Modifier.height(10.dp)); Label(I18n.t("AI가 말해도 되는 정보(선택)"))
-            Field(facts, I18n.t("예: 이름 허태혁, 연락처는 이 번호로"), multi = true) { facts = it }
-            Spacer(Modifier.height(14.dp))
-            Text(I18n.t("AI 통화는 첫 마디에 'AI 비서'임을 밝히고, 목적 밖의 결제·계약에는 동의하지 않으며, 카드·주민번호 같은 정보는 말하지 않아요. 긴급번호는 걸지 않고, 하루 5통 · 같은 번호 10분 간격으로 제한돼요."),
-                style = T.small.copy(fontSize = 12.5.sp, color = C.Graphite))
-        }
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            val ready = number.filter { it.isDigit() }.length >= 7 && goal.isNotBlank()
-            GhostButton(I18n.t("대본 받고 직접 걸기"), Modifier.fillMaxWidth()) {
-                if (ready) { vm.tab(Route.Chat); vm.store.msg(vm.convId.value, Role.USER, "$number 에 전화할 대본 · $goal", meta = mapOf("mission" to "true"))
-                    vm.runner.startMission(vm.convId.value, "$number 에 전화하기 위한 짧은 통화 대본을 써 줘(인사·요점·물어볼 것·예상 답별 대응). 목적: $goal. 말해도 되는 정보: $facts. 마지막에 phone.prepare로 번호와 대본을 띄워 줘.", difficulty = com.ht.hjtk.core.ai.Difficulty.QUICK) }
-            }
-            InkButton(if (provider == null) "AI가 대신 걸기 · 허브에서 계정 연결" else "AI가 대신 걸기", Modifier.fillMaxWidth(), accent = provider != null) {
-                if (provider == null) vm.go(Route.Accounts)
-                else if (ready) { vm.tab(Route.Chat); vm.store.msg(vm.convId.value, Role.USER, "AI 전화 · $number · $goal")
-                    vm.runner.runDirect(vm.convId.value, CommandCall("u1", "phone.ai_call", mapOf("number" to number, "goal" to goal, "facts" to facts))) }
-            }
-        }
-    }
-}
+// PhoneScreen은 PhoneScreen.kt로 옮겼다(3.0 · 기기 안 AI 통화)

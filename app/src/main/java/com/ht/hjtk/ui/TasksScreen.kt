@@ -135,7 +135,7 @@ fun JobScreen(vm: MainVm, id: String) {
                 }
             }
             if (j.final.isNotBlank()) { SectionHead("02", I18n.t("결과")); Spacer(Modifier.height(8.dp)); MdText(j.final) }
-            SectionHead("03", I18n.t("결과물 · 작업공간"), "공유") { files.firstOrNull()?.let { vm.openFile(ctx, it) } }
+            SectionHead("03", I18n.t("결과물 · 작업공간"), "저장") { files.firstOrNull()?.let { vm.openFile(ctx, it) } }
             if (files.isEmpty()) Text(I18n.t("파일이 아직 없어요"), style = T.small, modifier = Modifier.padding(vertical = 10.dp))
             files.forEachIndexed { i, f -> NumRow(i + 1, f.name, "${f.length()}B · ${dt.format(Date(f.lastModified()))}", onClick = { vm.openFile(ctx, f) }); Hairline() }
             SectionHead("04", "보고 ${reports.size}회")

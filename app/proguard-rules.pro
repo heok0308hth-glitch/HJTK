@@ -21,3 +21,13 @@
 
 # WorkManager: Worker는 클래스 이름으로 다시 만들어진다
 -keep class * extends androidx.work.ListenableWorker { public <init>(android.content.Context, androidx.work.WorkerParameters); }
+
+# 음성 엔진(JNI가 이름으로 찾는다)
+-keep class ai.onnxruntime.** { *; }
+-keep class com.ht.voice.** { *; }
+# 화면 글자 인식(ML Kit): 구성 요소를 이름으로 등록하므로 통째로 둔다
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_text_common.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_common.** { *; }
+-keep class com.google.android.libraries.vision.** { *; }
+-dontwarn com.google.mlkit.**

@@ -78,7 +78,7 @@ fun HubScreen(vm: MainVm) {
             Connector("DeepSeek", if (ds == DeepSeekWeb.Status.READY) "두뇌 · 키 없이 연결됨" else "두뇌 · 한 번 로그인", if (ds == DeepSeekWeb.Status.READY) 2 else 1, I.Spark) { vm.go(Route.Cockpit) },
             Connector(I18n.t("AI 모델 · 5개 회사"), vm.h.ai.members().joinToString(" · ") { it.provider.label }.ifBlank { "Claude · ChatGPT · Gemini · Grok · DeepSeek" }, if (vm.h.ai.members().size > 1) 2 else 1, I.Spark) { vm.go(Route.Ai) },
             Connector(I18n.t("계정 연결"), "GitHub · Notion · 네이버 API · AI 전화 · 로그인 사이트", if (vm.h.connectors.accounts.value.isNotEmpty()) 2 else 0, I.Key) { vm.go(Route.Accounts) },
-            Connector(I18n.t("AI 전화"), vm.h.phone.available()?.let { "$it · AI가 대신 통화" } ?: "대본 받고 직접 걸기 · 계정 연결 시 AI가 통화", if (vm.h.phone.available() != null) 2 else 0, I.Bell) { vm.go(Route.Phone) },
+            Connector(I18n.t("AI 전화"), vm.h.voice.summary() + " · 무료", if (vm.h.voice.packReady()) 2 else 0, I.Phone) { vm.go(Route.Phone) },
             Connector(I18n.t("실시간 음성 대화"), "말로 묻고 듣기 · 손을 떼도 이어서", 2, I.Chat) { vm.go(Route.Live) },
             Connector(I18n.t("PC에서 쓰기"), "같은 와이파이의 PC 브라우저로 HJTK 열기", 0, I.Globe) { vm.go(Route.Pc) },
             Connector(I18n.t("루틴"), com.ht.hjtk.engine.Routines.list.value.let { l -> if (l.isEmpty()) "정해 둔 시각에 AI가 알아서 일하기" else l.filter { it.enabled }.joinToString(" · ") { it.title }.ifBlank { "모두 꺼짐" } }, if (com.ht.hjtk.engine.Routines.list.value.any { it.enabled }) 2 else 0, I.Cal) { vm.go(Route.Routines) },
@@ -89,7 +89,7 @@ fun HubScreen(vm: MainVm) {
             Connector(I18n.t("연락처"), if (con) "받는 사람 확인" else "권한 한 번", if (con) 2 else 0, I.Chat) { permLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS)) },
             Connector(I18n.t("구글 드라이브·파일"), "${files.size}개 고정 · 시스템 선택기", if (files.isNotEmpty()) 2 else 0, I.File) { docPicker.launch(arrayOf("*/*")) },
             Connector(I18n.t("네이버 검색"), if (st.secrets.has("naver_id")) "공식 API 키" else "키 없이 웹 결과", 2, I.Search) { vm.go(Route.Settings) },
-            Connector(I18n.t("공유로 답 받기"), "다른 AI 앱 답을 복사하고 돌아오면 자동 수신", 2, I.Export) { vm.go(Route.Settings) },
+            Connector(I18n.t("공유로 받기"), "다른 앱에서 HJTK로 공유하면 대화에 들어와요", 2, I.Export) { vm.go(Route.Settings) },
             Connector(I18n.t("백그라운드 유지"), if (Perms.overlay(ctx)) "앱을 나가도 DeepSeek 창이 살아 있어요" else "허용하면 앱 밖에서도 작업이 끊기지 않아요(선택)", if (Perms.overlay(ctx)) 2 else 1, I.Eye) { ctx.startActivity(Perms.overlayIntent(ctx)) }
         )
         Column(Modifier.fillMaxSize()) {
@@ -117,12 +117,7 @@ fun HubScreen(vm: MainVm) {
                     }; Hairline()
                 }
 
-                SectionHead("03", I18n.t("자주 쓰는 앱"), if (pickApps) "닫기" else "고르기") { pickApps = !pickApps }
-                if (pickApps) AppPicker(vm)
-                if (apps.isEmpty() && !pickApps) Text(I18n.t("AI가 '앱 열기'를 할 때 먼저 찾는 목록이에요."), style = T.small, modifier = Modifier.padding(vertical = 10.dp))
-                apps.forEachIndexed { i, a -> NumRow(i + 1, a.label, a.pkg, onClick = { ctx.packageManager.getLaunchIntentForPackage(a.pkg)?.let { ctx.startActivity(it) } }); Hairline() }
-
-                SectionHead("04", I18n.t("연결된 메일"), "추가") { vm.go(Route.MailAdd) }
+                SectionHead("03", I18n.t("연결된 메일"), "추가") { vm.go(Route.MailAdd) }
                 if (mails.isEmpty()) Text(I18n.t("Gmail·네이버·다음·카카오·iCloud를 앱 비밀번호로 연결하세요."), style = T.small, modifier = Modifier.padding(vertical = 10.dp))
                 mails.forEachIndexed { i, m ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -131,10 +126,10 @@ fun HubScreen(vm: MainVm) {
                     }; Hairline()
                 }
 
-                SectionHead("05", I18n.t("자주 쓰는 파일"), "추가") { docPicker.launch(arrayOf("*/*")) }
+                SectionHead("04", I18n.t("자주 쓰는 파일"), "추가") { docPicker.launch(arrayOf("*/*")) }
                 if (files.isEmpty()) Text(I18n.t("구글 드라이브·다운로드의 파일을 고정해 두면 AI에게 '이 파일로 다시 작업'을 시킬 수 있어요."), style = T.small, modifier = Modifier.padding(vertical = 10.dp))
                 files.forEachIndexed { i, f -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { NumRow(i + 1, f.name, "고정됨", onClick = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(f.uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } }) }
+                    Box(Modifier.weight(1f)) { NumRow(i + 1, f.name, "고정됨 · AI가 이 파일을 읽어요") }
                     Box(Modifier.size(36.dp).press({ st.files.value = st.files.value.filter { it.uri != f.uri }; st.persistHub() }), contentAlignment = Alignment.Center) { Ico(I.Close, 14.dp, C.Mute) }
                 }; Hairline() }
 

@@ -69,6 +69,11 @@ class MainVm(val h: Hjtk) {
     val pickerOpen = MutableStateFlow(false)
     /** 입력창에 붙인 사진(경로) — 보내면 비운다 */
     val pendingImage = MutableStateFlow<String?>(null)
+    /** 다이얼에서 'AI에게'로 넘어온 번호 */
+    val phonePrefill = MutableStateFlow("")
+    /** HJTK 안 브라우저로 열 주소 */
+    val webUrl = MutableStateFlow("")
+    fun openWeb(url: String) { webUrl.value = url; go(Route.Browser) }
     val difficulty = MutableStateFlow(h.ai.state.value.difficulty)
 
     fun send(text0: String) {
@@ -154,9 +159,26 @@ class MainVm(val h: Hjtk) {
         }
         val dir = File(ctx.cacheDir, "exports").apply { mkdirs() }
         val f = File(dir, name.replace(Regex("[\\\\/:*?\"<>|]"), "_")); f.writeText(body)
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", f)
-        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "대화 내보내기").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        toast(ctx, saveToDownloads(ctx, f, mime))
     }
+
+    /** 다른 앱으로 넘기지 않고 '다운로드/HJTK'에 저장한다 */
+    fun saveToDownloads(ctx: Context, f: File, mime: String): String = runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val v = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, f.name); put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
+                put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HJTK")
+            }
+            val u = ctx.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v) ?: error("저장 위치를 만들 수 없어요")
+            ctx.contentResolver.openOutputStream(u)?.use { o -> f.inputStream().use { it.copyTo(o) } }
+            "다운로드/HJTK에 저장했어요 · ${f.name}"
+        } else {
+            val d = File(ctx.getExternalFilesDir(null), "HJTK").apply { mkdirs() }; f.copyTo(File(d, f.name), overwrite = true)
+            "앱 폴더(Android/data/com.ht.hjtk/files/HJTK)에 저장했어요 · ${f.name}"
+        }
+    }.getOrElse { "저장하지 못했어요: ${it.message}" }
+
+    private fun toast(ctx: Context, s: String) = android.widget.Toast.makeText(ctx, s, android.widget.Toast.LENGTH_LONG).show()
 
     private fun markdown(c: Conversation, msgs: List<Msg>, df: SimpleDateFormat) = buildString {
         appendLine("# ${c.title}"); appendLine(); appendLine("> HJTK 대화 기록 · ${df.format(Date(c.createdAt))} ~ ${df.format(Date(c.updatedAt))}"); appendLine()
@@ -172,9 +194,8 @@ class MainVm(val h: Hjtk) {
     }
 
     fun openFile(ctx: Context, f: File) {
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", f)
-        val type = when (f.extension.lowercase()) { "html" -> "text/html"; "md" -> "text/markdown"; "csv" -> "text/csv"; "png" -> "image/png"; "json" -> "application/json"; else -> "text/plain" }
-        runCatching { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), f.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        val type = when (f.extension.lowercase()) { "html" -> "text/html"; "md" -> "text/markdown"; "csv" -> "text/csv"; "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "json" -> "application/json"; else -> "text/plain" }
+        toast(ctx, saveToDownloads(ctx, f, type))
     }
 
     fun addCustom(trigger: String, expands: String, mission: Boolean) {

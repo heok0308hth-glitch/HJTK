@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** 자체 라인 아이콘(24 그리드, 1.6 스트로크). 머티리얼 기본 아이콘을 쓰지 않는다. */
-enum class I { Chat, Tasks, Hub, Tools, Send, Plus, Slash, Pause, Play, Stop, Check, Close, Gear, Mail, Globe, Cal, File, Spark, Paw, Chevron, Back, Search, Pin, Export, Trash, Eye, Bell, Menu, Key, Link, Flow, Up, Down, Image }
+enum class I { Chat, Tasks, Hub, Tools, Send, Plus, Slash, Pause, Play, Stop, Check, Close, Gear, Mail, Globe, Cal, File, Spark, Paw, Chevron, Back, Search, Pin, Export, Trash, Eye, Bell, Menu, Key, Link, Flow, Up, Down, Image, Phone, Mic, Speaker, Keypad, Wave }
 
 @Composable
 fun Ico(i: I, size: Dp = 22.dp, color: Color = Color(0xFF121212), modifier: Modifier = Modifier) {
@@ -37,6 +37,11 @@ fun Ico(i: I, size: Dp = 22.dp, color: Color = Color(0xFF121212), modifier: Modi
             I.Up -> { drawPath(p(6f, 14f, 12f, 8f, 18f, 14f), color, style = st) }
             I.Image -> { drawRoundRect(color, androidx.compose.ui.geometry.Offset(3.5f * s, 5f * s), androidx.compose.ui.geometry.Size(17f * s, 14f * s), androidx.compose.ui.geometry.CornerRadius(2.5f * s), style = st); drawPath(p(5.5f, 17f, 10f, 11.5f, 13.5f, 15f), color, style = st); drawPath(p(12.5f, 14f, 15f, 11.5f, 18.5f, 15.5f), color, style = st); circ(15.5f, 8.8f, 1.3f) }
             I.Down -> { line(12f, 5f, 12f, 19f); drawPath(p(6f, 13f, 12f, 19f, 18f, 13f), color, style = st) }
+            I.Phone -> { drawPath(Path().apply { moveTo(5f * s, 4.5f * s); lineTo(8.8f * s, 4.5f * s); lineTo(10.3f * s, 8.6f * s); lineTo(8.4f * s, 10f * s); quadraticTo(10f * s, 13.9f * s, 14f * s, 15.6f * s); lineTo(15.4f * s, 13.7f * s); lineTo(19.5f * s, 15.2f * s); lineTo(19.5f * s, 19f * s); quadraticTo(5f * s, 19.5f * s, 5f * s, 4.5f * s); close() }, color, style = st) }
+            I.Mic -> { rect(9f, 3.5f, 6f, 11f, 3f); drawPath(Path().apply { moveTo(6f * s, 11f * s); quadraticTo(6f * s, 17.5f * s, 12f * s, 17.5f * s); quadraticTo(18f * s, 17.5f * s, 18f * s, 11f * s) }, color, style = st); line(12f, 17.5f, 12f, 20.5f) }
+            I.Speaker -> { drawPath(p(4f, 9.5f, 7.5f, 9.5f, 12f, 5.5f, 12f, 18.5f, 7.5f, 14.5f, 4f, 14.5f, close = true), color, style = st); drawPath(Path().apply { moveTo(15f * s, 9f * s); quadraticTo(17f * s, 12f * s, 15f * s, 15f * s) }, color, style = st); drawPath(Path().apply { moveTo(17.5f * s, 6.5f * s); quadraticTo(21.5f * s, 12f * s, 17.5f * s, 17.5f * s) }, color, style = st) }
+            I.Keypad -> { for (r in 0..2) for (c in 0..2) circ(6.5f + c * 5.5f, 5.5f + r * 5.5f, 1.3f, true); circ(12f, 21f, 1.3f, true) }
+            I.Wave -> { line(4f, 10f, 4f, 14f); line(8f, 7f, 8f, 17f); line(12f, 4f, 12f, 20f); line(16f, 8f, 16f, 16f); line(20f, 10.5f, 20f, 13.5f) }
             I.Plus -> { line(12f, 5f, 12f, 19f); line(5f, 12f, 19f, 12f) }
             I.Slash -> { line(15f, 4f, 9f, 20f) }
             I.Pause -> { line(9f, 6f, 9f, 18f); line(15f, 6f, 15f, 18f) }
