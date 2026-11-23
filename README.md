@@ -1,5 +1,7 @@
 # HJTK
 
+[![Android CI](https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml/badge.svg)](https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml)
+
 **A deterministic AI orchestration toolkit for Android.**
 No on-device model, no mandatory API key, no screenshot-and-tap loop.
 
@@ -194,7 +196,7 @@ answer is marked less trustworthy than one confirmed by the stream.
 Requires JDK 17 and Android SDK 35 (CI does this for you).
 
 ```bash
-./gradlew testDebugUnitTest    # 116 unit, Robolectric and Compose UI tests
+./gradlew testDebugUnitTest    # 118 unit, Robolectric and Compose UI tests
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew lintDebug
 ```
