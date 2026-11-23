@@ -8,3 +8,11 @@ local.properties
 keystore/
 *.jks
 captures/
+# 개인 생체 정보(내 목소리 지문)는 공개 저장소에 올리지 않는다
+app/src/main/assets/voice/me.htvp
+voicecore/src/test/resources/me.htvp
+keystore.properties
+*.apk
+*.aab
+hs_err_pid*.log
+.kotlin/

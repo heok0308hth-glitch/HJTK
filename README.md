@@ -1,88 +1,190 @@
-# HJTK
+<p align="center"><img src="docs/hero.png" alt="HJTK — AI 팀을 지휘하는 개인 비서" width="100%"></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-3.4.0-E44D2E?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/Android-9%2B-0E0E0E?style=flat-square&logo=android" alt="android">
+  <img src="https://img.shields.io/badge/Kotlin-2.1-0E0E0E?style=flat-square&logo=kotlin" alt="kotlin">
+  <img src="https://img.shields.io/badge/Jetpack_Compose-BOM_2025.05-0E0E0E?style=flat-square" alt="compose">
+  <img src="https://img.shields.io/badge/tests-117_passing-0E0E0E?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/license-MIT-0E0E0E?style=flat-square" alt="license">
+</p>
 
 > **Don't make tool, make innovation.**
-> AI를 넣지 않은 AI 비서. 이미 폰에 있는 DeepSeek·Gemini를 지휘하는 개인용 오케스트레이션 플랫폼.
 
-HJTK 안에는 생성형 모델이 **한 바이트도 없습니다**. 대신 명령어 150개가 있습니다.
-사용자가 자연어로 일을 맡기면 → DeepSeek이 계획하고 명령을 고르고 → HJTK가 명령을 실행해 결과를 돌려주고 → 필요하면 Gemini가 교차 검토하고 → 5분마다 보고하고 → 결과물과 작업 기록을 남깁니다. 밖으로 나가는 일(메일 발송·공유·삭제)은 **'실행' 버튼으로 허락**을 받습니다.
+**HJTK** is a personal Android assistant that ships **no AI model of its own**. It conducts the AIs you already use — Claude, ChatGPT, Gemini, Grok and DeepSeek — by signing into their web apps inside the app (no API key required). One AI acts as the *center*: it splits a goal into tasks and hands them out by real-world strengths and live track record. The others work in parallel and share findings on a common *board*. A different company's AI cross-checks each result. Anything that leaves the phone waits for one tap on **실행**.
+
+HJTK는 **생성형 모델을 한 바이트도 넣지 않은** 개인용 AI 비서입니다. 이미 쓰고 있는 Claude·ChatGPT·Gemini·Grok·DeepSeek에 앱 안에서 로그인해 **키 없이** 지휘합니다.
+
+---
+
+## 한눈에
+
+| | |
+|---|---|
+| **문제** | AI마다 잘하는 게 다른데, 한 AI에게 다 맡기거나 사람이 창을 오가며 복사·붙여넣기를 한다. API 키는 돈이 들고, 화면을 찍어 누르는 에이전트는 느리고 비싸다. |
+| **해결** | 로그인한 웹 AI 다섯을 하나의 팀으로 묶었습니다. 앱이 흐름(계획·배정·검수·승인)을 쥐고, AI에게서는 글만 받습니다. |
+| **결과** | 할 일이 여러 AI에게 동시에 나뉘고, 서로의 발견을 읽고, 다른 회사 AI가 교차 확인한 결과물이 파일로 남습니다. 메일 발송, GitHub 업로드처럼 밖으로 나가는 일은 '실행' 한 번으로 승인합니다. |
+
+<p align="center">
+  <img src="docs/screens/chat.png" width="19%" alt="첫 화면">
+  <img src="docs/screens/ensemble.png" width="19%" alt="작업 무대">
+  <img src="docs/screens/job.png" width="19%" alt="작업 화면 · 칠판">
+  <img src="docs/screens/models.png" width="19%" alt="모델 고르기">
+  <img src="docs/screens/ai-call.png" width="19%" alt="AI 전화">
+</p>
+
+---
+
+## 핵심 설계
+
+### 1. 합주(Ensemble) — AI끼리 실제로 협업하게
+
+가장 잘하는 AI 하나에게 일이 몰리지 않도록, 배정을 **입찰**로 바꿨습니다.
+
+```mermaid
+flowchart LR
+    U([사용자의 목표]) --> C{{센터<br/>설계·검수만}}
+    C -->|할 일 분해| M[배정 시장<br/>능력·실적 − 지금 맡은 일]
+    M --> A1[Gemini<br/>최신 조사]
+    M --> A2[ChatGPT<br/>분석]
+    M --> A3[DeepSeek<br/>표 정리]
+    M --> A4[Grok<br/>반응 조사]
+    A1 & A2 & A3 & A4 <-->|사실·결정·주의·질문| B[(칠판)]
+    A1 -.교차 확인.-> A2
+    B --> G{센터: 빠진 일?}
+    G -->|보강·재배정| M
+    G -->|충분| W[통합<br/>센터 아닌 AI] --> R[센터 검수] --> F[[결과물 · GitHub]]
+```
+
+- **배정 시장 `Dispatch`**: 할 일마다 `입찰가 = 능력(실제 성공률 반영)/10 − 0.22 × 지금 맡은 일 + 지휘자 지명 가산`. 팀이 3명 이상이면 센터는 할 일을 받지 않습니다.
+- **칠판 `Board`**: 팀원은 결과 끝에 `[칠판] 사실/결정/주의/질문`을 남깁니다. 뒤에 시작하는 모든 팀원은 이걸 읽고 일하므로, 의존 관계로 이어지지 않은 AI끼리도 서로 압니다.
+- **교차 확인**: 결과가 나오면 쉬고 있는 *다른 회사* AI가 병렬로 짧게 확인합니다. 본 흐름은 기다리지 않습니다.
+- **자율 보강**: 센터가 결과와 칠판을 대조해 빠진 일을 직접 추가하고, 실패한 일은 다른 AI에게 다시 맡깁니다.
+- **현실적인 성적표 `AiProfiles` + `Scoreboard`**: 회사별 장단점(웹 사용량 한도, 형식 준수, 한국어 뉘앙스)과 실제 성공률·속도·한도를 합칩니다. "사용량 한도" 문구를 감지하면 안내된 시간만큼 그 AI를 쉬게 하고 즉시 교체합니다.
+- **멈춤의 정확성**: 일시정지하면 새 요청이 0건이고, 중지하면 진행 중인 요청까지 취소하고 사이트의 '중지' 버튼도 누릅니다. 둘 다 단위 테스트로 검증했습니다.
+
+### 2. 키 없는 웹 AI
+
+- 각 AI 사이트를 앱 안 WebView로 열고, 얇은 어댑터(`assets/webai.js`)가 입력창·보내기·답 영역을 찾습니다.
+- **보내기 직전에 화면의 기존 답에 표시**해 두고, 표시 없는 답만 이번 답으로 읽습니다. 새 대화에서 이전 답을 잘못 읽는 일을 구조적으로 막습니다.
+- 구글 계정 하나로 Claude·ChatGPT·Grok의 'Google로 계속'을 대신 눌러 한 번에 연결합니다.
+- DeepSeek은 페이지 자신의 스트림을 지나가며 읽는 방식(P0), 화면(P1), 서버 기록(P2)의 세 경로를 대조해 받습니다.
+
+### 3. 기기 안 AI 전화
+
+- Chatterbox 다국어 ONNX를 기기에서 돌려 **사용자 본인의 목소리**로 통화합니다. 핵심 엔진은 순수 JVM 모듈 `voicecore`로 분리해, 파이썬 기준 구현과 같은 소리 토큰이 나오는지 실제 모델로 시험합니다.
+- 통화 첫마디를 늦추지 않으려고 맞장구('네.')와 짧은 구절 단위 합성을 겹칩니다.
+- 안전장치: 모든 AI 통화는 첫마디에 'AI 비서'임을 밝히고, 긴급번호는 차단합니다. 하루 5통, 같은 번호는 10분 간격으로 제한합니다.
+
+### 4. 승인 게이트
+
+- 밖으로 나가는 명령(메일, 공유, 삭제, GitHub 업로드)은 정규화한 인자의 **SHA-256 다이제스트에 묶인 1회용 승인 토큰**으로만 실행됩니다. 승인한 뒤 인자가 바뀌면 실행되지 않습니다.
+- 승인 문장은 모델이 아니라 템플릿이 씁니다.
+
+### 5. 발열 예보 조율기
+
+- Android의 열 여유 예보와 배터리 온도로 **뜨거워지기 전에** 감속합니다. 동시 작업 수를 줄이고, 화면 뒤에 숨은 웹 페이지의 애니메이션을 얼리고, 무거운 일은 미룹니다.
+
+### 6. GitHub 업로드
+
+- "깃허브에 올려줘"라고 하면 결과물을 **커밋 한 번**으로 올립니다(Git Data API: blob → tree → commit → ref).
+- 저장소가 없으면 비공개로 새로 만듭니다.
+- 키스토어, `.env`, 키 파일, `build/`는 자동으로 제외합니다.
+- 결과 글 속 코드 블록은 실제 파일로 풀어서 올립니다.
+
+---
+
+## 아키텍처
+
+```mermaid
+flowchart TB
+    subgraph UI[ui — Jetpack Compose · 디자인 시스템 '먹과 인장']
+      Chat[대화·작업 무대] --- Hub[허브·연결] --- Call[전화]
+    end
+    subgraph Agent[agent]
+      JR[JobRunner<br/>사건 → 대화·알림]
+    end
+    subgraph Core[core — 안드로이드 의존 없음, JVM 테스트]
+      Cond[Conductor] --- Ens[Board · Dispatch]
+      Cmd[명령어 사전 150+] --- Aegis[승인 게이트]
+      AEP[AEP-1 봉투·스트림 파서] --- GH[GitHubPush · CodeFiles]
+    end
+    subgraph Engine[engine]
+      Web[WebAi ×4 · DeepSeekWeb] --- Api[API 경로·선택]
+      Th[Thermal] --- Score[Scoreboard]
+    end
+    VC[(voicecore<br/>Chatterbox ONNX)]
+    Ear[(ear — 통화 귀<br/>별도 앱)]
+    UI --> Agent --> Core
+    Core --> Engine
+    Call --> VC
+    Call -. 서명 권한 방송 .- Ear
+```
 
 ```
-사용자 ──자연어──▶ HJTK ──AEP-1 봉투──▶ DeepSeek(앱 안 WebView, 키 없음)
-                    ▲                         │ 계획 + 명령(JSON)
-                    │                         ▼
-              5분 보고·허락 카드      명령어 150개 실행(웹검색·메일·캘린더·파일…)
-                    │                         │ 결과
-                    └──────── 저널(해시 체인) ◀┘      Gemini(앱/웹, 공유 1탭) = 검토자
+app/src/main/java/com/ht/hjtk/
+  core/        순수 Kotlin — Conductor(지휘자), Ensemble(칠판·배정), 명령어 사전, 승인 게이트, AEP-1, GitHubPush
+  engine/      웹 AI(WebView) · DeepSeek · 계정 하나로 · 발열 조율 · 성적표 · Gmail 웹 발송 · 숨은 브라우저 검색
+  agent/       JobRunner — 작업 수명, 일시정지·중지, 대화 라우팅
+  tools/       명령 → 안드로이드 동작(웹·메일·캘린더·파일·GitHub…)
+  call/        기본 전화 앱 · AI 통화 루프
+  ui/          Compose 화면 · StageView(작업 무대)
+voicecore/     음성 엔진(순수 JVM) — 토크나이저, 생성 루프, 한국어 읽기
+ear/           통화 귀(접근성) — 본체 설치가 Play 프로텍트에 막히지 않게 분리
 ```
 
-## 양방향 통신 문제를 어떻게 풀었나
+Kotlin 약 15,000줄 · 모듈 3개 · 명령어 150개 이상.
 
-Android에는 "다른 앱에 보낸 요청의 답을 돌려받는" 계약이 없습니다. HJTK는 답이 돌아올 수 있는 길을 **여러 개 동시에** 열고, 받은 것은 '후보'로만 다룹니다.
+---
 
-| 대상 | 기본 경로(키 없음) | 답이 돌아오는 길 |
-|---|---|---|
-| **DeepSeek** | 앱 안 WebView에 `chat.deepseek.com` 1회 로그인 | 페이지 자신의 `fetch` 스트림을 `res.clone()`으로 tee → SSE·JSON-패치 해석(P0) → DOM(P1) → 복사 후킹(P4) |
-| DeepSeek 앱 | `ACTION_SEND` | 화면 읽기(접근성) · 공유 → HJTK · 텍스트 선택(PROCESS_TEXT) |
-| **Gemini** | Gemini 앱 / 브라우저(WebView 로그인은 Google 정책상 불가) | 화면 읽기 · 공유 1탭 · 붙여넣기 |
-| (선택) API 키 | DeepSeek·Gemini 공식 API | HTTP 응답 |
+## 검증
 
-- **AEP-1 봉투**: 모든 요청에 작업 ID(Crockford 11자, 체크섬)를 싣고, 응답은 7단계 복구 사다리로 읽습니다. 5단계 이하로 복구된 응답의 명령은 실행하지 않고 형식을 다시 요청합니다.
-- **DeepSeek 웹 API를 재구현하지 않습니다.** PoW·쿠키·봇 검사는 페이지가 직접 풀고, HJTK는 관찰만 합니다. `navigator.webdriver` 위조, 캡차 자동 통과, 네트워크 폴링을 하지 않습니다.
-- 외부 비평(Gemini)은 작업당 사람 손이 최대 2번만 들도록 제한했습니다. 받지 못하면 "외부 비평 미실시"라고 적습니다.
-
-## 주요 기능
-
-- **대화 / 작업 맡기기**: 자동 판별, 새 대화, 대화 검색·고정, 대화 내보내기(MD·HTML·JSON, 키·토큰 자동 마스킹)
-- **장기 작업**: 지금·다음·남은 시간(구간 ETA), 일시정지·재개·중지, 앱이 죽어도 '멈춤'으로 남아 재개 가능
-- **5분 보고**: 시간이 아니라 '변화'를 보고합니다. 늦으면 늦었다고 씁니다
-- **허락 게이트**: 지문 대신 '실행' 버튼. 승인은 다이제스트(SHA-256, 정규화 JSON)에 묶인 1회용 토큰이라 승인 뒤 인자가 바뀌면 실행되지 않습니다. 처음 보내는 주소·링크 포함은 경고와 함께 표시됩니다
-- **연동 센터**(서버·OAuth 없이): Gmail·네이버·다음·카카오·iCloud 메일(IMAP/SMTP 앱 비밀번호), 구글 캘린더(기기 동기화), 연락처, 구글 드라이브·파일(시스템 선택기), 네이버·DuckDuckGo·Bing·위키·구글 뉴스 검색, 날씨·미세먼지·환율·공휴일(키 없는 공개 API)
-- **Personal Hub**: 즐겨찾는 사이트·자주 쓰는 앱·연결된 메일·고정 파일·작업 공간·사용자 명령어(`/아침` 같은 단축)·기억
-- **파이프라인**: 명령을 이어 붙이는 자동화. 밖으로 나가는 단계 앞에 승인 단계를 **자동 삽입**
-- **스킬**: 코드가 아니라 지침. AI가 제안하면 사용자가 저장 여부를 정함
-- **기억**: 신경망 없이 BM25(한글 2-gram)로 검색
-- **조종석**: AI가 쓰는 DeepSeek 화면을 그대로 보고 직접 조작
-- **화면 공유 도움**: AI가 요청하면, 도움이 필요한 화면을 띄우고 펫을 누르면 그 화면의 글자가 AI에게 갑니다(접근성 켜짐 시)
-- **펫 '쥬티'**: 앱 밖에서 작업 중일 때 화면을 돌아다니며 보고를 말풍선으로 전함. 켜고 끌 수 있음
-
-## 빌드
+| 종류 | 내용 |
+|---|---|
+| 단위 테스트 117개 | 지휘자 전체 흐름을 가짜 AI 팀으로 끝까지 돌림(병렬 실행, 한도 감지 → 교체, 막힌 검색 → AI 직접 조사). 일을 한 AI에게 몰아줘도 고르게 나뉘는지, 일시정지 중 새 요청 0건, 중지 시 진행 중 요청 취소, GitHub 단일 커밋·비밀 파일 제외, 칠판 파싱. |
+| 화면 렌더 테스트 | Robolectric + Roborazzi로 39개 화면을 실제 크기(393dp)로 렌더해 눈으로 검수. |
+| 음성 엔진 | 실제 ONNX 모델로 파이썬 기준 구현과 소리 토큰이 정확히 같은지 대조(탐욕 선택). |
+| 회귀 방지 | Android ICU 정규식이 거부하는 패턴을 소스 전체에서 찾아내는 검사. |
 
 ```bash
-./gradlew :app:testStandardDebugUnitTest   # 코어 30개 + 화면 렌더 12개
-./gradlew :app:assembleStandardRelease :app:assembleFullRelease
+./gradlew :app:testDebugUnitTest :voicecore:test     # 단위·화면 테스트
+./gradlew :app:assembleRelease                       # 릴리스 APK
 ```
-릴리스 서명: `keystore/hjtk-release.jks`(저장소에 올리지 않음)를 두고 `HJTK_KS_PASS` 환경변수를 설정하세요.
 
-## 구조
+릴리스 서명: `keystore/hjtk-release.jks`를 두고 `HJTK_KS_PASS` 환경 변수 또는 `keystore/keystore.properties`(`password=…`)를 설정하세요. 둘 다 저장소에 올리지 않습니다. 없으면 서명 없이 빌드됩니다.
 
-```
-core/        순수 Kotlin(안드로이드 의존 없음, JVM 테스트)
-  aep/       AEP-1 봉투 · 7단계 파서 · 엄격 JSON 검사
-  stream/    SSE 파서 · DeepSeek JSON-패치 조립 · 델타/누적 판정 · 종료 판정
-  command/   명령어 사전 150 · 결정론 명령(계산·텍스트·단위…)
-  agent/     에이전트 루프 · 프로토콜 · 5분 보고 · ETA
-  aegis/     정책 · 정규화 다이제스트 · 1회용 승인 토큰
-  Support.kt 저널(해시 체인) · L0 검증기 · 기억 · 파이프라인 · 입력 라우터 · 마스킹
-engine/      DeepSeek WebView · API 키 경로 · 외부 앱 브리지 · 접근성 · 알림
-tools/       명령어 → 안드로이드 동작(웹·메일·캘린더·파일…)
-agent/       JobRunner: 사건을 대화·알림·펫으로 번역, 사람의 손을 기다림
-service/     세션 FGS + 펫 오버레이
-ui/          Compose — 디자인 시스템 '접지(Fold & Signal)'
-```
-확장은 `CommandCatalog`에 한 줄을 추가하고 `AndroidTools`에 핸들러 하나를 넣으면 끝납니다.
+> 개인 생체 정보인 '내 목소리' 지문(`assets/voice/me.htvp`)은 공개 저장소에서 뺐습니다. 이 파일 없이 빌드하면 앱에서 목소리를 직접 등록해 쓰면 됩니다.
+
+---
+
+## 버전 기록
+
+| 버전 | 핵심 |
+|---|---|
+| **3.4** | 합주 — 배정 시장, 칠판, 교차 확인, 자율 보강 · 일시정지·중지 즉시 반영 · 새 대화의 이전 답 버그 수정 · GitHub 업로드 |
+| 3.3 | 지휘자(센터) · 작업 무대 애니메이션 · + 옆 모델 칩 · 사용량 한도 시 자동 교체 · Gmail 웹 실제 발송 |
+| 3.2 | 계정 하나로(구글·네이버) · 모델·노력·창의성 고르기 · 통화 귀를 별도 앱으로 분리 |
+| 3.1 | 키 없는 AI 로그인(Claude·ChatGPT·Gemini·Grok) · 발열 예보 조율기 · 다크 모드 기본 |
+| 3.0 | 기기 안 AI 전화(내 목소리 · Chatterbox ONNX) · 화면 글자 지도로 토큰 70~85% 절감 |
+| 2.x | AI 다섯 회사 · 루틴 · 백업 · R8과 폰트 서브셋으로 APK 26MB → 5.4MB |
+| 1.x | AEP-1 봉투 · DeepSeek 스트림 읽기 · 승인 게이트 · 해시 체인 작업 기록 |
+
+---
 
 ## 정직한 한계
 
-- 실기기에서 DeepSeek 왕복을 아직 검증하지 않았습니다(빌드 환경에 기기 없음). DeepSeek 웹 화면이 바뀌면 P0→P1→P4 순으로 내려가고, 그래도 안 되면 붙여넣기/공유로 이어갑니다.
-- 5분 보고는 Android가 보장하지 않습니다(Doze·제조사 절전). 못 지키면 표시합니다.
-- **3.2 — 계정 하나로**: 구글(또는 네이버)에 한 번 로그인하면 HJTK의 모든 웹 화면이 그 계정으로 열리고, Claude·ChatGPT·Grok은 'Google로 계속'을 대신 눌러 연결. 메일·드라이브·Keep·캘린더는 로그인된 Gemini의 Google 앱 연결(`google.ask`)로. 모델 고르기(회사→모델) + 노력·창의성·길이. 첫 화면 예시 카드 제거. 통화 귀를 별도 앱(`ear` 모듈)으로 분리해 본체 설치가 막히지 않게. 통화는 '네.' 맞장구 + 짧은 구절 단위 합성으로 첫 소리 단축. 조종석 화면이 발열 단계에서 안 뜨던 문제 수정.
-- **3.3 — 지휘자(센터)**: 한 AI가 센터가 되어 목표를 결과물·합격 기준·할 일로 나누고, 회사별 현실 장단점(`AiProfiles`)과 실제 성적표(`Scoreboard`: 성공률·속도·한도)를 보고 배정한다. 앞 일이 끝난 할 일은 바로 동시에 시작(AI마다 자기 창). 답이 비거나 사용량 한도면 같은 능력의 다음 AI로 즉시 교체, 검색 도구가 막히면 스스로 검색하는 AI(Gemini·GPT·Grok)가 조사. 가장 글을 잘 쓰는 AI가 통합하고 센터가 검수. 계획 JSON은 따옴표 안 괄호까지 아는 추출기(`JsonPick`) + 재요청 + 유형별 공정표. 작업 무대(`StageView`): 센터와 팀원 카드가 '누가 · 무엇을 · 지금 쓰는 글'을 회사색 고리·흐르는 빛으로 보여 줌. 입력창은 [+] [모델 칩] … [모드] [보내기]. 대화도 한도에 걸리면 다른 AI로 자동 교체. 웹 검색이 막히면 보이지 않는 브라우저(`Scout`)로 구글·네이버를 직접 읽음. `mail.send`는 앱 비밀번호 없이 로그인한 구글 세션으로 Gmail 웹에서 실제 발송(실행 승인 후, 보냄 표시까지 확인). GPT·Grok 입력창을 일반 규칙으로 찾아 '준비중' 멈춤 수정.
-- **3.4 — 합주(Ensemble)**: 일이 Claude 한 명에게 몰리던 문제를 구조로 해결. ① 배정 시장(`Dispatch`): 할 일마다 팀원이 입찰(능력·실적 − 지금 맡은 일), 팀이 3명 이상이면 센터는 할 일을 받지 않고 설계·검수만. ② 칠판(`Board`): 팀원이 결과 끝에 사실·결정·주의·질문을 남기면 이후 모든 팀원이 읽고 일함. ③ 교차 확인: 결과가 나오면 놀고 있는 다른 회사 AI가 병렬로 짧게 확인, 문제는 칠판에 '주의'. ④ 보강(자율): 센터가 결과·칠판을 보고 빠진 일을 추가, 실패한 일은 다른 AI에게 재배정. ⑤ 통합은 센터가 아닌 AI, 깊게 이상은 다른 회사 AI가 한 번 더 검수. 로그인 풀림·입력창 없음은 15분 쉬게 해 팀이 기다리지 않음. 일시정지 = 새 요청 0, 중지 = 진행 중 요청 즉시 취소 + 사이트 '중지' 클릭. 새 대화에서 이전 답이 뜨던 버그(DeepSeek 진행 글 재방출·대화방 주소 공유·웹 AI 옛 답 읽기) 수정. `github.push`: 결과물을 커밋 한 번으로 GitHub에 올림(저장소 자동 생성·기본 비공개·비밀 파일 제외·코드 블록을 실제 파일로).
-- **3.1 — AI 로그인(키 없이 Claude·ChatGPT·Gemini·Grok)** · AI 통화는 상황 버튼 없이 AI가 직접 듣고(통화 귀) 말함 · 열 예보 조율기(Android 열 여유 예보 + 배터리 온도로 뜨거워지기 전에 감속, 숨은 웹 화면 애니메이션 얼리기, 무거운 일은 식거나 충전 중일 때) · 다크 모드 기본 · 탭 3개로 단순화 · 안드로이드 정규식 오류 수정
-- **3.0 — 기기 안 AI 전화(무료·내 목소리)**: Chatterbox 다국어 ONNX(MIT)를 앱에 넣고, 사용자의 목소리 지문(`assets/voice/me.htvp`)을 미리 학습해 둠. 엔진 960MB는 앱 안에서 한 번 받음. HJTK를 기본 전화 앱으로 지정하면 걸기·받기·통화 화면이 전부 앱 안. '갈래 대본'을 미리 녹음해 통화 중 탭 즉시 재생. 화면 읽기는 사진 대신 **글자 지도**(기기 OCR)로 보내 토큰 70~85% 절약. 다른 앱으로 넘어가는 경로 전부 제거. 음성 엔진 핵심은 `voicecore` 모듈(JVM에서 실제 모델로 시험).
-- **2.1 — 루틴 · 사진 질문 · 백업/복원 · 사용량 · 알림에서 바로 답하기/허락 · 앱 바로가기**. R8 축소와 한글 폰트 서브셋(KS X 1001 + 앱 문구)으로 APK 26MB → 5.4MB.
-- **빌드는 하나**: 접근성·SMS·알림 접근 권한을 쓰지 않아 Play 프로텍트(EFP) 사이드로드 차단에 걸리지 않습니다.
-- 화면 공유는 안드로이드 기본 '화면 녹화 허락'(매번 승인 · 한 장만)으로, 다른 AI 앱의 답은 '복사하고 돌아오기' 자동 수신으로 받습니다.
-- 자동화는 서비스 약관과 충돌할 수 있습니다. 본인 계정·본인 세션을 쓰는 개인 도구로 설계했고, 요청 빈도를 낮게 유지합니다.
+- AI 웹 사이트가 화면 구조를 바꾸면 어댑터를 고쳐야 할 수 있습니다. 바뀐 경우를 대비해 일반 규칙으로 입력창·답을 찾는 예비 경로를 두었습니다.
+- 웹 자동화는 각 서비스 약관과 충돌할 수 있습니다. 본인 계정과 본인 세션을 쓰는 **개인 도구**로 설계했고, 요청 빈도를 낮게 유지합니다.
+- 실기기 검증은 사용자 기기에서 버전마다 진행하고 있습니다. 빌드 환경에는 기기가 없어서, 단위·화면 테스트로 대신 검증합니다.
 
-만든 사람: 허태혁 (HT)
+## 사용한 것
+
+- [Chatterbox Multilingual](https://huggingface.co/onnx-community) (MIT) · [ONNX Runtime](https://onnxruntime.ai) (MIT) · ML Kit 텍스트 인식(Google 약관)
+- [Pretendard](https://github.com/orioncactus/pretendard) (SIL OFL 1.1) · Jetpack Compose · Robolectric · Roborazzi
+
+## 만든 사람
+
+**허태혁 (Heo Taehyeok)** · HT
+기획 · 디자인 · 개발 — 디자인 시스템 '먹과 인장': 먹색과 종이색, 그리고 살아 있는 상태와 AI 표시에만 쓰는 주홍 하나.
+
+[MIT License](LICENSE)

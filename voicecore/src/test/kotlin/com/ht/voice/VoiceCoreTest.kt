@@ -40,6 +40,7 @@ class VoiceCoreTest {
     }
 
     @Test fun voicePrintLoadsAndTrims() {
+        assumeTrue("목소리 지문 없음(공개 저장소) — 건너뜀", javaClass.classLoader.getResource("me.htvp") != null)
         val v = VoicePrint.read(res("me.htvp").readBytes())
         assertEquals(33, v.condLen); assertEquals(33 * 1024, v.cond.size)
         assertEquals(250, v.prompt.size); assertEquals(192, v.xvec.size); assertEquals(500 * 80, v.feat.size)
@@ -51,7 +52,7 @@ class VoiceCoreTest {
     /** 실제 모델로: 코틀린 생성 루프가 파이썬 기준 구현과 같은 소리 토큰을 내는지(탐욕 선택이라 정확히 같아야 한다) */
     @Test fun engineReproducesReferenceTokensAndSpeaks() {
         val dir = File(System.getProperty("cb.models") ?: "")
-        assumeTrue("모델 없음 — 건너뜀", File(dir, CbEngine.FILE_LM).exists())
+        assumeTrue("모델 없음 — 건너뜀", File(dir, CbEngine.FILE_LM).exists() && javaClass.classLoader.getResource("me.htvp") != null)
         val v = VoicePrint.read(res("me.htvp").readBytes())
         val g = expected.getJSONObject("greedy"); val text = g.keys().next()
         val want = g.getJSONArray(text).let { a -> (1 until a.length() - 1).map { a.getLong(it) } }

@@ -66,7 +66,8 @@ class VoiceHub(private val ctx: Context) {
     // ───────────── 목소리 목록 ─────────────
     fun refreshVoices() {
         val list = ArrayList<VoiceInfo>()
-        list += VoiceInfo("me", "내 목소리", true)
+        // 내 목소리 지문(me.htvp)은 개인 생체 정보라 공개 저장소에 없다 → 넣어 빌드한 경우에만 기본 목소리로
+        if (hasMe()) list += VoiceInfo("me", "내 목소리", true)
         voiceDir.listFiles { f -> f.extension == "htvp" }?.sortedBy { it.lastModified() }?.forEach { f ->
             val name = File(f.path.removeSuffix(".htvp") + ".name").takeIf { it.exists() }?.readText() ?: f.nameWithoutExtension
             list += VoiceInfo(f.nameWithoutExtension, name, false)
@@ -76,7 +77,10 @@ class VoiceHub(private val ctx: Context) {
 
     fun select(id: String) { state.value = state.value.copy(voiceId = id) }
 
+    fun hasMe(): Boolean = runCatching { ctx.assets.open("voice/me.htvp").close(); true }.getOrDefault(false)
+
     fun print(id: String = state.value.voiceId): VoicePrint = synchronized(prints) {
+        if (id == "me" && !hasMe()) throw IllegalStateException("기본 목소리가 없어요 — 목소리를 먼저 등록해 주세요")
         prints.getOrPut(id) {
             val bytes = if (id == "me") ctx.assets.open("voice/me.htvp").readBytes() else File(voiceDir, "$id.htvp").readBytes()
             VoicePrint.read(bytes)

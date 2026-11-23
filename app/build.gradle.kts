@@ -4,6 +4,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+/** 서명 비밀번호: 환경 변수 HJTK_KS_PASS 또는 keystore/keystore.properties(저장소에 올리지 않음) */
+fun ksPass(): String = System.getenv("HJTK_KS_PASS") ?: rootProject.file("keystore/keystore.properties").takeIf { it.exists() }
+    ?.readLines()?.firstOrNull { it.startsWith("password=") }?.substringAfter("=")?.trim() ?: ""
+
+
 android {
     namespace = "com.ht.hjtk"
     compileSdk = 35
@@ -21,11 +26,11 @@ android {
     signingConfigs {
         create("release") {
             val ks = rootProject.file("keystore/hjtk-release.jks")
-            if (ks.exists()) {
+            if (ks.exists() && ksPass().isNotEmpty()) {
                 storeFile = ks
-                storePassword = System.getenv("HJTK_KS_PASS") ?: ""
+                storePassword = ksPass()
                 keyAlias = "hjtk"
-                keyPassword = System.getenv("HJTK_KS_PASS") ?: ""
+                keyPassword = ksPass()
             }
         }
     }
