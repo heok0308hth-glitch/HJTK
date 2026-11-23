@@ -45,6 +45,7 @@ sealed interface Route {
     data object Routines : Route
     data object Usage : Route
     data object AiLogin : Route
+    data object GitHub : Route
 }
 
 enum class Mode(val label: String) { AUTO("자동"), QUICK("대화"), MISSION("작업 맡기기") }

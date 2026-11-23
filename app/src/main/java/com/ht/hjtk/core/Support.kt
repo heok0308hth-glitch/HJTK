@@ -245,7 +245,7 @@ object InputRouter {
         data class Custom(val cmd: CustomCommand, val rest: String) : Route
     }
 
-    private val missionVerbs = listOf("찾아", "준비해", "만들어", "정리해", "조사해", "보내", "예약", "작성해", "모아", "비교해", "분석해", "계획", "추천해", "알아봐", "검토해", "써줘", "짜줘", "등록해", "확인해서", "처리해", "제작")
+    private val missionVerbs = listOf("찾아", "준비해", "만들어", "정리해", "조사해", "보내", "예약", "작성해", "모아", "비교해", "분석해", "계획", "추천해", "알아봐", "검토해", "써줘", "짜줘", "등록해", "확인해서", "처리해", "제작", "깃허브에 올", "깃헙에 올", "github에 올", "GitHub에 올", "업로드해", "푸시해")
 
     fun looksLikeMission(t: String): Boolean = t.length >= 8 && missionVerbs.any { t.contains(it) }
 

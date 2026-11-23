@@ -174,15 +174,16 @@ class ScreensTest {
     private fun seedStage(id: String) {
         val now = System.currentTimeMillis()
         com.ht.hjtk.core.agent.StageBus.put(com.ht.hjtk.core.agent.StageBus.Stage(id, "디자인 공모전 준비", "Claude", "CLAUDE", "실행", listOf(
-            com.ht.hjtk.core.agent.StageBus.Card("t1", "공모전 4곳 조사", "Gemini", "GEMINI", StS.DONE, "12개 후보 · 2,140자", now - 95_000, now - 51_000),
+            com.ht.hjtk.core.agent.StageBus.Card("t1", "공모전 4곳 조사", "Gemini", "GEMINI", StS.DONE, "12개 후보 · 2,140자", now - 95_000, now - 51_000, peer = "ChatGPT 확인 · 주의 남김"),
             com.ht.hjtk.core.agent.StageBus.Card("t2", "요강 정독 · 자격 확인", "GPT", "GPT", StS.RUN, "읽는 중 · 서울 공공디자인 요강", now - 38_000),
             com.ht.hjtk.core.agent.StageBus.Card("t3", "마감·상금 비교표", "DeepSeek", "DEEPSEEK", StS.RUN, "표로 정리하는 중", now - 21_000),
             com.ht.hjtk.core.agent.StageBus.Card("t4", "최신 수상작 경향", "Grok", "GROK", StS.SWAP, "GPT 사용량 한도 → Grok로 교체", now - 9_000),
-            com.ht.hjtk.core.agent.StageBus.Card("t5", "제출물 초안", "Claude", "CLAUDE", StS.WAIT, "t2·t3 끝나면 시작"),
-        ), progress = 0.46, note = "후보 비교표"))
+            com.ht.hjtk.core.agent.StageBus.Card("t5", "제출물 초안", "ChatGPT", "GPT", StS.WAIT, "t2·t3 끝나면 시작"),
+        ), progress = 0.46, note = "후보 비교표", board = listOf("Gemini · 사실 · 서울 공공디자인 마감 12월 12일(공고문)", "ChatGPT · 주의 · 한글 타이포 상금 300만→200만으로 정정", "DeepSeek · 질문 · 팀 출품 허용 여부 확인 필요")))
         com.ht.hjtk.engine.LiveBus.put(id, "GPT", "참가 자격은 만 19세 이상 개인 또는 3인 이하 팀이며, 출품작은 미발표작이어야 합니다")
     }
     @Test fun s38_stageChat() { seedStage("7F3K9Q2M4XZ"); shot("38_stage_chat") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
     @Test fun s39_stageJob() { seedStage("7F3K9Q2M4XZ"); vm.go(Route.Job("7F3K9Q2M4XZ")); shot("39_stage_job") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
+    @Test fun s40_github() { vm.go(Route.GitHub); shot("40_github") { HjtkApp(vm) } }
     @Test fun s34_dialer() { shot("34_dialer") { com.ht.hjtk.ui.CallScreen(vm.h, "0262051180", onClose = {}) } }
 }

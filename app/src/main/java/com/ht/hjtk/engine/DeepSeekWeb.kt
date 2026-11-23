@@ -335,7 +335,10 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
         ui { main.removeCallbacks(pauseIdle); web?.onResume() }
         try {
             sendLocked(text, newSession).also { r -> if (r.text.isNotBlank()) UsageLog.add("DeepSeek", com.ht.hjtk.core.ai.Tokens.estimate(text), com.ht.hjtk.core.ai.Tokens.estimate(r.text)) }
-        } finally { onMain { scheduleIdle() } }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            withContext(kotlinx.coroutines.NonCancellable) { runCatching { js("window.__hjtkStopGen?window.__hjtkStopGen():'NONE'", 1_500) } }
+            throw e
+        } finally { partial.value = ""; onMain { scheduleIdle() } }
     }
 
     private suspend fun sendLocked(text: String, newSession: Boolean): LlmReply {

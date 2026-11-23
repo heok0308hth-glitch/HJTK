@@ -51,6 +51,7 @@ object ApprovalSummaries {
         fun v(k: String) = p[k]?.let { if (it.length > 140) it.take(140) + "…" else it } ?: "-"
         return when (a.tool) {
             "mail.send" -> "${a.account ?: "기본 계정"}에서 ${v("to")}에게 메일을 보냅니다.\n제목: ${v("subject")}\n본문 ${p["body"]?.length ?: 0}자"
+            "github.push" -> "GitHub 저장소 '${v("repo")}'에 ${if (p["path"].isNullOrBlank()) "이 작업의 결과물" else "'" + v("path") + "'"}을 올립니다(${if (p["private"] == "false") "공개" else "비공개"}).\n커밋: ${v("message")}\n키스토어·.env·키 파일은 자동으로 빠집니다."
             "mail.reply" -> "메일(${v("id")})에 답장을 보냅니다. 본문 ${p["body"]?.length ?: 0}자"
             "share.text" -> "다른 앱으로 내용을 공유합니다(${p["text"]?.length ?: 0}자)."
             "kakao.send" -> "카카오톡 공유 화면에 내용을 넣습니다(${p["text"]?.length ?: 0}자)."

@@ -76,6 +76,8 @@ fun StageView(jobId: String, dark: Boolean, compact: Boolean = false) {
             }
             if (compact && st.cards.size > cards.size) Text("+${st.cards.size - cards.size}", style = T.small.copy(color = sub, fontSize = 12.sp), modifier = Modifier.padding(start = 26.dp, top = 2.dp))
         }
+        // 칠판: AI끼리 주고받은 메모(누가 · 무엇을 알렸나)
+        if (st.board.isNotEmpty()) BoardStrip(if (compact) st.board.takeLast(1) else st.board.takeLast(3), dark)
         Spacer(Modifier.height(10.dp))
         FlowBar(st.progress.toFloat(), animate, dark)
     }
@@ -121,6 +123,7 @@ private fun CardRow(c: StageBus.Card, live: String?, now: Long, dark: Boolean, a
                 }
                 val line = "${c.who} · " + when (c.status) { StageBus.S.WAIT -> c.doing.ifBlank { "대기" }; StageBus.S.DONE -> "완료 · ${c.doing}"; StageBus.S.FAIL -> "답을 받지 못함"; else -> c.doing }
                 Shimmer(line, running && animate, if (c.status == StageBus.S.SWAP) C.Red else sub, fg)
+                if (c.peer.isNotBlank()) Text("↳ " + c.peer, style = T.small.copy(color = if (c.peer.contains("주의")) C.Red else sub, fontSize = 11.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 if (live != null && live.isNotBlank()) Text(live.replace('\n', ' ').takeLast(90), style = T.small.copy(color = if (dark) C.OnInk.copy(alpha = 0.82f) else C.Ink2, fontSize = 12.sp),
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
             }
@@ -140,7 +143,9 @@ private fun Avatar(name: String, provider: String, size: Dp, active: Boolean, an
             if (active) drawArc(Brush.sweepGradient(listOf(tint.copy(alpha = 0f), tint)), angle, 110f, false, topLeft = Offset(w / 2, w / 2), size = Size(this.size.width - w, this.size.height - w), style = Stroke(w, cap = StrokeCap.Round))
         }
         Box(Modifier.size(size - 7.dp).clip(CircleShape).background(if (dark) C.OnInk.copy(alpha = 0.08f) else C.Paper2), contentAlignment = Alignment.Center) {
-            Text(name.take(1).uppercase(), style = T.small.copy(color = if (dark) C.OnInk else C.Ink, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.4f).sp))
+            // 같은 첫 글자(Claude·ChatGPT, Gemini·Grok)가 헷갈리지 않게 회사별 두 글자
+            val mono = when (provider.uppercase()) { "CLAUDE" -> "Cl"; "GPT" -> "GP"; "GEMINI" -> "Ge"; "GROK" -> "Gk"; "DEEPSEEK" -> "DS"; else -> name.take(1).uppercase() }
+            Text(mono, style = T.small.copy(color = if (dark) C.OnInk else C.Ink, fontWeight = FontWeight.Bold, fontSize = (size.value * (if (mono.length > 1) 0.34f else 0.4f)).sp, letterSpacing = 0.sp))
         }
         badge?.let { b ->
             val (bg, mark) = when (b) { StageBus.S.DONE -> tint to "✓"; StageBus.S.FAIL -> C.Red to "!"; StageBus.S.SWAP -> C.Red to "⇄"; else -> null to "" }
@@ -168,5 +173,28 @@ private fun FlowBar(p: Float, animate: Boolean, dark: Boolean) {
             drawContent()
             if (x >= 0f) drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color(0x88FFFFFF), Color.Transparent), startX = size.width * x - 80f, endX = size.width * x + 80f))
         })
+    }
+}
+
+/** 칠판 띠: 가는 테두리 안에 최근 메모 몇 줄. 회사색 점으로 누가 남겼는지 */
+@Composable
+private fun BoardStrip(lines: List<String>, dark: Boolean) {
+    val fg = if (dark) C.OnInk else C.Ink
+    val sub = if (dark) C.OnInkMute else C.Graphite
+    Column(Modifier.padding(start = 16.dp, top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp))
+        .background(if (dark) C.OnInk.copy(alpha = 0.06f) else C.Paper2).padding(horizontal = 10.dp, vertical = 8.dp)) {
+        Text("칠판 · AI끼리 남긴 메모", style = T.mono.copy(color = sub, fontSize = 10.sp))
+        lines.forEach { l ->
+            val who = l.substringBefore(" · ")
+            val kind = l.substringAfter(" · ").substringBefore(" · ")
+            val body = l.substringAfter(" · ").substringAfter(" · ")
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(5.dp).clip(CircleShape).background(providerTint(when (who) { "Claude" -> "CLAUDE"; "ChatGPT", "GPT" -> "GPT"; "Gemini" -> "GEMINI"; "Grok" -> "GROK"; else -> "DEEPSEEK" })))
+                Spacer(Modifier.width(6.dp))
+                Text(who, style = T.small.copy(color = fg, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp))
+                Text(" $kind ", style = T.small.copy(color = if (kind == "주의") C.Red else sub, fontSize = 11.5.sp))
+                Text(body, style = T.small.copy(color = fg, fontSize = 11.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }

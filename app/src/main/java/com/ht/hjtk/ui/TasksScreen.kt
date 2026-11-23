@@ -50,7 +50,7 @@ fun TopBar(title: String, sub: String? = null, onBack: (() -> Unit)? = null, act
 
 fun stateLabel(s: String) = when (s) {
     "RUNNING" -> "진행 중"; "PAUSED" -> "일시정지"; "PAUSED_APPROVAL" -> "허락 대기"; "PAUSED_INPUT" -> "답 대기"; "SUSPENDED" -> "멈춤"
-    "COMPLETED" -> "완료"; "FAILED" -> "실패"; "ABORTED" -> "중지"; else -> s
+    "COMPLETED" -> "완료"; "FAILED" -> "실패"; "ABORTED" -> "중지"; "ABORTING" -> "멈추는 중"; else -> s
 }
 
 @Composable

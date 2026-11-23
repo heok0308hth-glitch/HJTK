@@ -59,6 +59,7 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
     val modelNote = MutableStateFlow("")
     private val mutex = Mutex()
     private var lastUse = 0L
+    @Volatile private var pageGen = 0
     private val js by lazy { app.assets.open("webai.js").bufferedReader().use { it.readText() } }
     private fun boot() = "window.__HJTK_CFG=${site.cfg()};" + js
 
@@ -82,6 +83,7 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
         w.webViewClient = object : WebViewClient() {
             override fun onPageStarted(v: WebView, url: String?, favicon: android.graphics.Bitmap?) { url?.let { lastUrl = it }; if (status.value != Status.READY) status.value = Status.LOADING }
             override fun onPageFinished(v: WebView, url: String?) {
+                pageGen++
                 CookieManager.getInstance().flush(); url?.let { lastUrl = it }; v.evaluateJavascript(boot(), null)
                 if (cockpit?.get() == null) v.evaluateJavascript(Thermal.FREEZE_CSS, null)
                 refresh()
@@ -195,7 +197,13 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
         val t0 = System.currentTimeMillis(); lastUse = t0
         fun fail(v: String) = LlmReply("", v, false, System.currentTimeMillis() - t0)
         ui { main.removeCallbacks(nap); ensure(); place() }
-        if (newSession) { ui { web?.loadUrl(site.home) }; delay(1_200) }
+        if (newSession) {
+            // 새 대화: 페이지가 실제로 새로 뜰 때까지 기다린다(옛 화면에 글을 넣거나 옛 답을 읽는 일 방지)
+            val g0 = pageGen
+            ui { web?.loadUrl(site.home) }
+            withTimeoutOrNull(15_000) { while (pageGen == g0) delay(150) }
+            delay(500)
+        }
         when (waitState(25_000)) {
             Status.LOGIN -> return fail("NEEDS_LOGIN")
             Status.CHALLENGE -> return fail("CHALLENGE")
@@ -207,35 +215,41 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
             val ok = when (r) { "ALREADY" -> true; "OPENED" -> { delay(600); eval("window.__hjtkAi.choose(${JSONObject.quote(m)})") == "OK" }; else -> false }
             if (ok) { gotModel = m; modelNote.value = "$m 선택됨"; delay(400) } else modelNote.value = "사이트에서 $m 을(를) 찾지 못해 기본 모델로 보냈어요"
         }
-        val n0 = eval("window.__hjtkAi.count()").toIntOrNull() ?: 0
-        val before = eval("window.__hjtkAi.last()")
+        // 지금 화면의 답에 모두 표시 → 이후에 생긴 표시 없는 답만 이번 답으로 인정
+        eval("window.__hjtkAi.mark()")
         if (eval("window.__hjtkAi.put(${JSONObject.quote(text)})") == "NO_INPUT") return fail("NO_INPUT")
-        delay(350)
-        eval("window.__hjtkAi.submit()")
-        // 보냈는지: 입력창이 비거나 답 칸이 늘면
-        var sent = false
-        repeat(20) { if (!sent) { delay(Thermal.poll(400)); val left = eval("window.__hjtkAi.pending()").toIntOrNull() ?: 0; val n = eval("window.__hjtkAi.count()").toIntOrNull() ?: 0; if (left <= 1 || n > n0) sent = true } }
-        if (!sent) { eval("window.__hjtkAi.submit()"); delay(800) }
-        // 답 기다리기: 새 답이 생기고, '멈춤' 버튼이 사라지고, 글자가 2.5초 동안 그대로면 끝
-        val end = t0 + 6 * 60_000L
-        var last = ""; var stableSince = 0L; var appeared = false
-        while (System.currentTimeMillis() < end) {
-            delay(Thermal.poll(700))
-            val n = eval("window.__hjtkAi.count()").toIntOrNull() ?: 0
-            val cur = eval("window.__hjtkAi.last()")
-            if (n > n0 || (cur.isNotBlank() && cur != before)) appeared = true
-            if (!appeared) { if (System.currentTimeMillis() - t0 > 60_000) return fail("NO_ANSWER"); continue }
-            if (cur != last) { last = cur; stableSince = System.currentTimeMillis(); partial.value = cur; LiveBus.put(jobId.ifBlank { "web" }, name, cur) }
-            val busy = eval("window.__hjtkAi.busy()") == "true"
-            if (!busy && last.isNotBlank() && System.currentTimeMillis() - stableSince > 2_500) break
-        }
-        LiveBus.clear(jobId.ifBlank { "web" }, name); partial.value = ""
-        main.postDelayed(nap, if (Thermal.level.value >= 2) 3_000 else 8_000)
-        lastUse = System.currentTimeMillis()
-        if (last.isBlank()) return fail("NO_ANSWER")
-        UsageLog.add(name, Tokens.estimate(text), Tokens.estimate(last))
-        LlmReply(last, "WEB_${site.provider.name}", true, System.currentTimeMillis() - t0)
+        try {
+            delay(350)
+            eval("window.__hjtkAi.submit()")
+            var sent = false
+            repeat(20) { if (!sent) { delay(Thermal.poll(400)); val left = eval("window.__hjtkAi.pending()").toIntOrNull() ?: 0; val n = eval("window.__hjtkAi.fresh()").toIntOrNull() ?: 0; if (left <= 1 || n > 0) sent = true } }
+            if (!sent) { eval("window.__hjtkAi.submit()"); delay(800) }
+            // 답 기다리기: 새 답이 생기고, '멈춤' 버튼이 사라지고, 글자가 2.5초 동안 그대로면 끝
+            val end = t0 + 6 * 60_000L
+            var last = ""; var stableSince = 0L; var appeared = false
+            while (System.currentTimeMillis() < end) {
+                delay(Thermal.poll(700))
+                val cur = eval("window.__hjtkAi.lastFresh()")
+                if (cur.isNotBlank()) appeared = true
+                if (!appeared) { if (System.currentTimeMillis() - t0 > 75_000) return fail("NO_ANSWER"); continue }
+                if (cur != last) { last = cur; stableSince = System.currentTimeMillis(); partial.value = cur; LiveBus.put(jobId.ifBlank { "web" }, name, cur) }
+                val busy = eval("window.__hjtkAi.busy()") == "true"
+                if (!busy && last.isNotBlank() && System.currentTimeMillis() - stableSince > 2_500) break
+            }
+            main.postDelayed(nap, if (Thermal.level.value >= 2) 3_000 else 8_000)
+            lastUse = System.currentTimeMillis()
+            if (last.isBlank()) return fail("NO_ANSWER")
+            UsageLog.add(name, Tokens.estimate(text), Tokens.estimate(last))
+            LlmReply(last, "WEB_${site.provider.name}", true, System.currentTimeMillis() - t0)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // 작업 중지: 사이트에서도 생성을 멈춘다(계속 일하지 않게)
+            withContext(kotlinx.coroutines.NonCancellable) { eval("window.__hjtkAi.stop()", 2_000) }
+            throw e
+        } finally { LiveBus.clear(jobId.ifBlank { "web" }, name); partial.value = "" }
     }
+
+    /** 밖에서 멈추기(작업 중지 버튼) */
+    suspend fun stopNow() { eval("window.__hjtkAi.stop()", 2_000) }
 }
 
 /** 웹 AI 네 개를 한곳에서: 사이트 정의 · 로그인 상태 · 활동 화면 뒤에 숨기기 */
@@ -279,6 +293,7 @@ object WebAiHub {
     fun port(p: Provider): WebAi? { val c = ctx ?: return null; val s = sites.firstOrNull { it.provider == p } ?: return null; return synchronized(ports) { ports.getOrPut(p) { WebAi(c, s) } } }
 
     fun setLoggedIn(p: Provider, on: Boolean) {
+        if (on) Scoreboard.clearSoft("${p.name}:WEB:-")      // 다시 로그인되면 '로그인 필요'로 쉬던 것을 바로 풀어 준다
         val now = if (on) loggedIn.value + p else loggedIn.value - p
         if (now == loggedIn.value) return
         loggedIn.value = now

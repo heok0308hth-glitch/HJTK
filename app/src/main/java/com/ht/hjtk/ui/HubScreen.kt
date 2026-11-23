@@ -83,6 +83,8 @@ fun HubScreen(vm: MainVm) {
             Connector(I18n.t("실시간 음성 대화"), "말로 묻고 듣기 · 손을 떼도 이어서", 2, I.Chat) { vm.go(Route.Live) },
             Connector(I18n.t("PC에서 쓰기"), "같은 와이파이의 PC 브라우저로 HJTK 열기", 0, I.Globe) { vm.go(Route.Pc) },
             Connector(I18n.t("루틴"), com.ht.hjtk.engine.Routines.list.value.let { l -> if (l.isEmpty()) "정해 둔 시각에 AI가 알아서 일하기" else l.filter { it.enabled }.joinToString(" · ") { it.title }.ifBlank { "모두 꺼짐" } }, if (com.ht.hjtk.engine.Routines.list.value.any { it.enabled }) 2 else 0, I.Cal) { vm.go(Route.Routines) },
+            (st.secrets.has("github_token") || vm.h.connectors.token(com.ht.hjtk.engine.Service.GITHUB) != null).let { gh ->
+                Connector("GitHub", if (gh) "연결됨 · '깃허브에 올려줘'로 결과물 올리기" else "선택 · 토큰 한 번이면 결과물을 저장소로", if (gh) 2 else 0, I.Globe) { vm.go(Route.GitHub) } },
             Connector(I18n.t("사용량"), "AI별 토큰 · 최근 7일", 2, I.Eye) { vm.go(Route.Usage) },
             Connector("Gmail", mails.firstOrNull { it.provider == "gmail" }?.email ?: "앱 비밀번호로 연결", if (mails.any { it.provider == "gmail" }) 2 else 0, I.Mail) { vm.go(Route.MailAdd) },
             Connector(I18n.t("네이버 메일"), mails.firstOrNull { it.provider == "naver" }?.email ?: "IMAP·SMTP", if (mails.any { it.provider == "naver" }) 2 else 0, I.Mail) { vm.go(Route.MailAdd) },
@@ -198,6 +200,47 @@ private fun AppPicker(vm: MainVm) {
                 Box(Modifier.size(18.dp).clip(RoundedCornerShape(4.dp)).border(1.5.dp, C.Ink, RoundedCornerShape(4.dp)).background(if (on) C.Ink else Color.Transparent), contentAlignment = Alignment.Center) { if (on) Ico(I.Check, 12.dp, C.OnInk) }
                 Spacer(Modifier.width(10.dp)); Text(label, style = T.body)
             }
+        }
+    }
+}
+
+/** GitHub 연결(선택 기능): 토큰 한 번 → '깃허브에 올려줘'라고 하면 결과물을 커밋 한 번으로 올린다 */
+@Composable
+fun GitHubScreen(vm: MainVm) {
+    val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var token by remember { mutableStateOf("") }
+    var who by remember { mutableStateOf(vm.store.settings.value.let { "" }) }
+    var msg by remember { mutableStateOf<String?>(null) }; var busy by remember { mutableStateOf(false) }
+    val has = vm.store.secrets.has("github_token")
+    LaunchedEffect(Unit) { if (has && !Motion.test) runCatching { who = com.ht.hjtk.core.GitHubPush { m, p, b -> com.ht.hjtk.engine.GitHubHttp.call(m, "https://api.github.com$p", b?.toString(), mapOf("Authorization" to "Bearer ${vm.store.secrets.get("github_token")}", "Accept" to "application/vnd.github+json")) }.login() } }
+    Column(Modifier.fillMaxSize()) {
+        TopBar("GitHub", "선택 기능 · 토큰은 기기 안에 암호화 저장", onBack = { vm.back() })
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (has) FoldCard(Modifier.fillMaxWidth()) {
+                Label(I18n.t("연결됨")); Spacer(Modifier.height(4.dp))
+                Text(if (who.isNotBlank()) "@$who" else "토큰 저장됨", style = T.head)
+                Spacer(Modifier.height(6.dp))
+                Text(I18n.t("대화나 작업에서 \"깃허브에 올려줘\", \"my-app 저장소로 올려\"처럼 말하면 결과물을 커밋 한 번으로 올려요. 올리기 전에 '실행' 확인을 받아요."), style = T.small.copy(color = C.Ink2))
+            }
+            FoldCard(Modifier.fillMaxWidth()) {
+                Label(I18n.t("준비 — 1분")); Spacer(Modifier.height(4.dp))
+                Text("1. 아래 '토큰 만들기'를 눌러 GitHub에 로그인\n2. Repository access: All repositories\n3. 권한: Contents 읽기·쓰기, Administration 읽기·쓰기(새 저장소 만들 때)\n4. 만든 토큰(github_pat_…)을 붙여 넣기", style = T.small.copy(color = C.Ink2))
+                Spacer(Modifier.height(8.dp))
+                GhostButton(I18n.t("토큰 만들기 열기")) { openCustomTab(ctx, "https://github.com/settings/personal-access-tokens/new") }
+            }
+            Field(token, { token = it.trim() }, "github_pat_… 또는 ghp_…", secret = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                InkButton(if (busy) "확인 중…" else I18n.t("연결 확인 · 저장"), accent = true) {
+                    if (!busy && token.length > 20) { busy = true; scope.launch {
+                        val r = runCatching { com.ht.hjtk.core.GitHubPush { m, p, b -> com.ht.hjtk.engine.GitHubHttp.call(m, "https://api.github.com$p", b?.toString(), mapOf("Authorization" to "Bearer $token", "Accept" to "application/vnd.github+json")) }.login() }
+                        r.onSuccess { vm.store.secrets.put("github_token", token); who = it; token = ""; msg = "연결됨 · @$it" }.onFailure { msg = it.message }
+                        busy = false } }
+                }
+                if (has) GhostButton(I18n.t("연결 해제")) { vm.store.secrets.put("github_token", null); who = ""; msg = "연결을 해제했어요" }
+            }
+            msg?.let { Text(it, style = T.small.copy(color = if (it.startsWith("연결됨")) C.Ink else C.Red, fontWeight = FontWeight.SemiBold)) }
+            Text(I18n.t("키스토어(.jks)·.env·키 파일·build 폴더는 절대 올리지 않아요. 새 저장소는 기본 비공개로 만들어요."), style = T.small.copy(fontSize = 12.sp))
         }
     }
 }

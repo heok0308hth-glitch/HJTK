@@ -63,6 +63,7 @@ fun HjtkApp(vm: MainVm) {
                         Route.Onboarding -> Onboarding(vm)
                         Route.Memory -> MemoryScreen(vm)
                         Route.MailAdd -> MailAddScreen(vm)
+                        Route.GitHub -> GitHubScreen(vm)
                         Route.Ai -> AiSettingsScreen(vm)
                         Route.Accounts -> AccountsScreen(vm)
                         Route.Browser -> BrowserScreen(vm)

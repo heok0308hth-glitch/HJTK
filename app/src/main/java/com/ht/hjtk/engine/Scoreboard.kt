@@ -34,11 +34,16 @@ object Scoreboard {
         if (s.ok + s.fail > 20) { s.ok = (s.ok * 0.8).toInt(); s.fail = (s.fail * 0.8).toInt() }    // 오래된 기록은 옅게
         if (ok) s.avgMs = if (s.avgMs == 0.0) ms.toDouble() else s.avgMs * 0.7 + ms * 0.3
         limitRest(text, via)?.let { rest -> s.restUntil = System.currentTimeMillis() + rest; s.lastNote = "사용량 한도 · ${rest / 60_000}분 쉬는 중" }
+        // 3.4: 로그인 풀림·입력창 없음·화면 미준비는 몇 번 더 시켜도 같다 → 15분 쉬게 해서 팀이 그 AI를 기다리며 시간을 버리지 않게
+        if (!ok && text.isBlank() && HARD.any { via.contains(it) }) { s.restUntil = System.currentTimeMillis() + 15 * 60_000L; s.lastNote = if (via.contains("LOGIN")) "로그인 필요" else "화면 준비 안 됨" }
+        if (ok && s.restUntil > 0 && s.lastNote.let { it == "로그인 필요" || it == "화면 준비 안 됨" }) s.restUntil = 0
         save()
     }
 
+    private val HARD = listOf("NEEDS_LOGIN", "CHALLENGE", "NO_INPUT", "WEB_NOT_READY", "NO_WEB", "NOT_READY")
     fun resting(key: String) = stat(key).restUntil > System.currentTimeMillis()
     fun note(key: String) = stat(key).let { if (resting(key)) it.lastNote else "" }
+    fun clearSoft(key: String) = synchronized(stats) { stats[key]?.let { if (it.lastNote == "로그인 필요" || it.lastNote == "화면 준비 안 됨") { it.restUntil = 0; it.lastNote = ""; save() } } }
     fun clear(key: String) = synchronized(stats) { stats[key]?.restUntil = 0; save() }
 
 

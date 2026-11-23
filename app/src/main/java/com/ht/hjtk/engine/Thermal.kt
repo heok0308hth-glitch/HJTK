@@ -39,14 +39,14 @@ object Thermal {
         pm = ctx.getSystemService(PowerManager::class.java)
         if (Build.VERSION.SDK_INT >= 29) runCatching { pm?.addThermalStatusListener(ctx.mainExecutor) { sample() } }
         sample()
-        scope.launch { while (true) { delay(if (level.value >= 2) 10_000 else 20_000); sample() } }
+        scope.launch { while (true) { delay(if (level.value >= 2) 10_000 else 20_000); runCatching { sample() } } }
     }
 
     fun sample() {
         val p = pm
         val status = if (Build.VERSION.SDK_INT >= 29 && p != null) p.currentThermalStatus else 0
         val hr = if (Build.VERSION.SDK_INT >= 30 && p != null) runCatching { p.getThermalHeadroom(10) }.getOrDefault(Float.NaN) else Float.NaN
-        val bat = app?.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val bat = runCatching { app?.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) }.getOrNull()
         val t = bat?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)?.takeIf { it > 0 }?.div(10f) ?: Float.NaN
         val plugged = (bat?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
         headroom.value = hr; batteryC.value = t; charging.value = plugged

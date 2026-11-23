@@ -28,9 +28,11 @@ interface Crew {
 object StageBus {
     enum class S { WAIT, RUN, CHECK, DONE, SWAP, FAIL }
     data class Card(val id: String, val title: String, val who: String, val provider: String, val status: S = S.WAIT, val doing: String = "",
-                    val startedAt: Long = 0, val endedAt: Long = 0, val after: List<String> = emptyList(), val tool: Boolean = false)
+                    val startedAt: Long = 0, val endedAt: Long = 0, val after: List<String> = emptyList(), val tool: Boolean = false,
+                    val peer: String = "", val round: Int = 0)
     data class Stage(val jobId: String, val goal: String, val center: String, val centerProvider: String, val phase: String, val cards: List<Card>,
-                     val progress: Double = 0.0, val note: String = "", val startedAt: Long = System.currentTimeMillis())
+                     val progress: Double = 0.0, val note: String = "", val startedAt: Long = System.currentTimeMillis(),
+                     val board: List<String> = emptyList())
 
     val stages = MutableStateFlow<Map<String, Stage>>(emptyMap())
     fun put(s: Stage) = stages.update { it + (s.jobId to s) }

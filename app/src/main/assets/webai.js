@@ -2,7 +2,7 @@
    한 번 넣으면 window.__hjtkAi 가 생긴다. 설정(CFG)은 앱이 사이트별로 앞에 붙여 준다.
    원칙: 화면에 보이는 입력창에 글을 넣고 보내기를 누른 뒤, 마지막 답 요소의 글자를 읽는다. 클릭은 보내기 한 번뿐. */
 (function () {
-  if (window.__hjtkAi && window.__hjtkAi.v === 3) { window.__hjtkAi.cfg = window.__HJTK_CFG || window.__hjtkAi.cfg; return; }
+  if (window.__hjtkAi && window.__hjtkAi.v === 4) { window.__hjtkAi.cfg = window.__HJTK_CFG || window.__hjtkAi.cfg; return; }
   var cfg = window.__HJTK_CFG || {};
   function q(list) {
     for (var i = 0; i < (list || []).length; i++) {
@@ -16,6 +16,14 @@
     }
     return [];
   }
+  /* 답 요소: 사이트별 자리 → 못 찾으면 흔한 마크다운 답 모양(사용자 말풍선은 제외) */
+  function answers() {
+    var els = all(api.cfg.answer); if (els.length) return els;
+    var gen = document.querySelectorAll('[data-message-author-role="assistant"], .markdown, .prose, [class*="markdown"]');
+    var out = [];
+    for (var i = 0; i < gen.length; i++) { var e = gen[i]; if (e.closest('[data-message-author-role="user"], [class*="user-message"], [class*="UserMessage"], form, textarea')) continue; if (out.length && out[out.length - 1].contains(e)) continue; out.push(e); }
+    return out;
+  }
   function vis(el) { if (!el) return false; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
   function text(el) { return el ? (el.innerText || el.textContent || '').replace(/ /g, ' ').trim() : ''; }
   function loginish() {
@@ -24,7 +32,7 @@
     return !!document.querySelector('input[type=password], input[type=email], input[name=email], input[autocomplete=username]');
   }
   var api = {
-    v: 3, cfg: cfg,
+    v: 4, cfg: cfg,
     input: function () {
       var el = q(api.cfg.input); if (el) return el;
       // 사이트가 바뀌어 지정한 자리를 못 찾으면: 화면 아래쪽의 넓은 입력칸(채팅 입력창의 공통 모양)
@@ -40,8 +48,14 @@
       if (loginish()) return 'LOGIN';
       return 'LOADING';
     },
-    count: function () { return all(api.cfg.answer).length; },
-    last: function () { var els = all(api.cfg.answer); return els.length ? text(els[els.length - 1]) : ''; },
+    count: function () { return answers().length; },
+    last: function () { var els = answers(); return els.length ? text(els[els.length - 1]) : ''; },
+    /* 3.4: 보내기 전에 지금 있는 답에 표시 → 그 뒤에 생긴 답만 '새 답'. 새 대화 창에서 이전 답이 잘못 읽히는 일을 막는다 */
+    mark: function () { var els = answers(); for (var i = 0; i < els.length; i++) els[i].setAttribute('data-hjtk-seen', '1'); return String(els.length); },
+    fresh: function () { var els = answers(), n = 0; for (var i = 0; i < els.length; i++) if (!els[i].closest('[data-hjtk-seen]')) n++; return String(n); },
+    lastFresh: function () { var els = answers(); for (var i = els.length - 1; i >= 0; i--) if (!els[i].closest('[data-hjtk-seen]')) return text(els[i]); return ''; },
+    /* 멈춤: 생성 중이면 사이트의 '중지' 버튼을 누른다 */
+    stop: function () { var b = q(api.cfg.stop); if (b) { b.click(); return 'STOPPED'; } return 'IDLE'; },
     busy: function () {
       if (q(api.cfg.stop)) return true;
       var b = api.cfg.streaming; if (b) { try { if (document.querySelector(b)) return true; } catch (e) {} }

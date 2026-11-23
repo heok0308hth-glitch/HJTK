@@ -1,5 +1,7 @@
 package com.ht.hjtk.agent
 
+import kotlinx.coroutines.flow.drop
+
 import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.ht.hjtk.Hjtk
@@ -277,7 +279,9 @@ class JobRunner(private val h: Hjtk) {
         l.loop = loop
         store.msg(job.convId, Role.SYSTEM, "작업을 맡았어요 · ${diff.label}" + (team[AiRole.WRITE]?.let { " · 작성 ${it.name}" } ?: "") + (team[AiRole.REVIEW]?.takeIf { diff.critic }?.let { " · 검토 ${it.name}" } ?: "") + (active?.let { " · 스킬 '${it.name}'" } ?: ""), "note", mapOf("job" to job.id))
         l.task = scope.launch {
-            val out = runCatching { loop.run() }.getOrElse { LoopOutcome(JobState.FAILED, "오류: ${it.message}", 0, "오류") }
+            val out = try { loop.run() }
+                catch (e: CancellationException) { LoopOutcome(JobState.ABORTED, "중지됨", 0, "중지") }
+                catch (e: Throwable) { CrashLog.record(e, "job"); LoopOutcome(if (l.control.signal.value == JobControl.Signal.ABORT) JobState.ABORTED else JobState.FAILED, if (l.control.signal.value == JobControl.Signal.ABORT) "중지됨" else "오류: ${e.message}", 0, "오류") }
             store.updateJob(job.id) { it.copy(state = out.state.name, final = out.final, label = out.label, progress = if (out.state == JobState.COMPLETED) 1.0 else it.progress) }
             live.remove(job.id); liveCount.value = live.size
             Notifier.report(h.app, job.id, if (out.state == JobState.COMPLETED) "완료 · ${job.goal.take(30)}" else "중단 · ${job.goal.take(30)}", out.final.take(400))
@@ -287,8 +291,15 @@ class JobRunner(private val h: Hjtk) {
     fun pause(jobId: String) { live[jobId]?.control?.pause(); store.updateJob(jobId) { it.copy(state = "PAUSED", label = "일시정지") } }
     fun unpause(jobId: String) { if (live.containsKey(jobId)) { live[jobId]?.control?.resume(); store.updateJob(jobId) { it.copy(state = "RUNNING", label = "재개") } } else resume(jobId) }
     fun abort(jobId: String) {
-        live[jobId]?.let { it.control.abort(); pending.value.values.filter { p -> p.jobId == jobId }.forEach { p -> p.deferred.complete(null) } }
+        live[jobId]?.let { l ->
+            l.control.abort(); pending.value.values.filter { p -> p.jobId == jobId }.forEach { p -> p.deferred.complete(null) }
+            store.updateJob(jobId) { it.copy(state = "ABORTING", label = "멈추는 중") }
+            // 지휘자가 1.5초 안에 스스로 멈추지 않으면(옛 엔진·도구 대기 등) 작업 코루틴째 끊는다 → 진행 중인 AI 요청도 취소되고 사이트의 '중지'가 눌린다
+            scope.launch { delay(1_500); if (live[jobId] === l) l.task?.cancel() }
+        }
         if (!live.containsKey(jobId)) store.updateJob(jobId) { it.copy(state = "ABORTED", label = "중지") }
+        // 대화 창이 이 작업 때문에 DeepSeek에 묶여 있던 답 대기도 정리
+        com.ht.hjtk.core.agent.StageBus.edit(jobId) { it.copy(phase = "중지") }
     }
 
     /** PC 연결처럼 작업이 없어도 프로세스를 살려 둘 때 */
@@ -555,7 +566,7 @@ class JobRunner(private val h: Hjtk) {
         streamingConv.value = convId
         port.wantModel = h.ai.state.value.chatPin.substringAfter('|', "").takeIf { it.isNotBlank() }?.let { id -> com.ht.hjtk.core.ai.ModelCatalog.of(p).firstOrNull { it.id == id }?.label?.split(' ')?.lastOrNull { w -> w.any { c -> c.isLetter() } } }
         val r = try { port.send(com.ht.hjtk.engine.ChatStyle.hint() + text, convId, 1, room == null) } finally { streamingConv.value = null }
-        port.lastUrl?.takeIf { it != port.site.home && r.text.isNotBlank() }?.let { webAiRooms[key] = it }
+        port.lastUrl?.takeIf { it != port.site.home && r.text.isNotBlank() && webAiRooms.none { (k, v) -> k != key && v == it } }?.let { webAiRooms[key] = it }
         return r
     }
 
@@ -570,7 +581,9 @@ class JobRunner(private val h: Hjtk) {
                 if (!fresh) lane.ensureSession(conv?.dsSession)
                 streamingConv.value = convId
                 val rr = try { mirror(lane, convId, "DeepSeek" + if (lane !== h.deepseek) " · 대화 창" else "") { lane.send(com.ht.hjtk.engine.ChatStyle.hint() + text, convId, 1, fresh) } } finally { streamingConv.value = null }
-                lane.currentUrl()?.takeIf { it.contains("/chat/") || it.contains("/a/") }?.let { u -> store.updateConversation(convId) { it.copy(dsSession = u) } }
+                // 이 대화방 주소 기억: 답을 받았고, 다른 대화가 이미 쓰는 주소가 아닐 때만(새 대화가 옛 대화방을 이어 쓰던 버그)
+                lane.currentUrl()?.takeIf { (it.contains("/chat/") || it.contains("/a/")) && rr.text.isNotBlank() && store.conversations.value.none { c -> c.id != convId && c.dsSession == it } }
+                    ?.let { u -> store.updateConversation(convId) { it.copy(dsSession = u) } }
                 rr
             }
         } ?: LlmReply("", "TIMEOUT", false, 0)
@@ -578,7 +591,8 @@ class JobRunner(private val h: Hjtk) {
 
     /** DeepSeek 창의 '쓰는 중' 글자를 LiveBus로 비춘다(대화·작업 화면이 같은 방식으로 실시간 표시) */
     private suspend fun <T> mirror(web: DeepSeekWeb, owner: String, who: String, block: suspend () -> T): T = kotlinx.coroutines.coroutineScope {
-        val j = launch { web.partial.collect { if (it.isNotEmpty()) LiveBus.put(owner, who, it) } }
+        // drop(1): StateFlow가 직전 답(다른 대화의 것)을 다시 흘려보내지 않게 — 새 대화에서 이전 답이 뜨던 버그
+        val j = launch { web.partial.drop(1).collect { if (it.isNotEmpty()) LiveBus.put(owner, who, it) } }
         try { block() } finally { j.cancel(); LiveBus.clear(owner, who) }
     }
 

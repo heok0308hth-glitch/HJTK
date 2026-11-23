@@ -12,8 +12,8 @@ android {
         applicationId = "com.ht.hjtk"
         minSdk = 28
         targetSdk = 35
-        versionCode = 11
-        versionName = "3.3.0"
+        versionCode = 12
+        versionName = "3.4.0"
         // 음성 엔진(onnxruntime)·글자 인식은 64비트 ARM만 싣는다: 요즘 폰은 전부 arm64, 용량은 절반
         ndk { abiFilters += listOf("arm64-v8a") }
     }

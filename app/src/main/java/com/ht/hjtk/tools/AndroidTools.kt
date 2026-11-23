@@ -215,6 +215,21 @@ class AndroidTools(
                 }
             }
         }
+        // ── GitHub ─────────────────────────────────────────────
+        put("github.status") { _ ->
+            val gh = gitHub() ?: return@put fail(GH_NEED)
+            runCatching { val who = gh.login(); val r = com.ht.hjtk.engine.Http.get("https://api.github.com/user/repos?sort=pushed&per_page=5", ghHeaders()); ok("GitHub @$who 연결됨\n최근 저장소: " + Regex("\"full_name\"\\s*:\\s*\"([^\"]+)\"").findAll(r.body).map { it.groupValues[1] }.joinToString(", ")) }
+                .getOrElse { fail(it.message ?: "GitHub 연결 오류") }
+        }
+        put("github.push") { c ->
+            val gh = gitHub() ?: return@put fail(GH_NEED)
+            val files = pushFiles(c.arg("path"))
+            if (files.isEmpty()) return@put fail("올릴 파일을 찾지 못했어요. path에 작업공간 안의 폴더·파일 이름을 적거나, 먼저 결과물을 만들어 주세요.")
+            runCatching {
+                val r = gh.push(c.arg("repo"), files, c.arg("message").ifBlank { "HJTK 업로드 · ${files.size}개 파일" }, c.arg("branch"), c.arg("private") != "false")
+                ok("GitHub에 올렸어요 → ${r.url}\n파일 ${r.files}개 · 커밋 ${r.commit}" + (if (r.created) " · 새 저장소(${if (c.arg("private") == "false") "공개" else "비공개"})" else "") + (if (r.skipped.isNotEmpty()) "\n제외(비밀·대용량): " + r.skipped.take(8).joinToString() else ""))
+            }.getOrElse { fail(it.message ?: "GitHub 오류") }
+        }
         put("mail.reply") { c -> mailDo(c) { a, pw ->
             val uid = c.arg("id").filter { it.isDigit() }.toLong()
             val orig = MailClient.read(a, pw, uid)
@@ -431,6 +446,33 @@ class AndroidTools(
             "LA" to "America/Los_Angeles", "로스앤젤레스" to "America/Los_Angeles", "샌프란시스코" to "America/Los_Angeles", "시애틀" to "America/Los_Angeles", "토론토" to "America/Toronto", "밴쿠버" to "America/Vancouver",
             "시드니" to "Australia/Sydney", "멜버른" to "Australia/Melbourne", "오클랜드" to "Pacific/Auckland", "호놀룰루" to "Pacific/Honolulu", "하와이" to "Pacific/Honolulu", "괌" to "Pacific/Guam")
         return ZoneId.of(m[name.trim()] ?: name.trim())
+    }
+
+    private val GH_NEED = "GitHub 연결이 필요해요: 허브 → GitHub에서 토큰을 한 번 넣어 주세요(선택 기능)."
+    /** GitHub 토큰: 허브 → GitHub에서 넣은 것, 없으면 '계정 연결'의 GitHub 계정 */
+    private fun ghToken(): String? = store.secrets.get("github_token")?.takeIf { it.isNotBlank() } ?: h.connectors.token(com.ht.hjtk.engine.Service.GITHUB)?.second
+    private fun ghHeaders(): Map<String, String> = mapOf("Authorization" to "Bearer ${ghToken().orEmpty()}", "Accept" to "application/vnd.github+json", "X-GitHub-Api-Version" to "2022-11-28")
+    private fun gitHub(): com.ht.hjtk.core.GitHubPush? {
+        ghToken() ?: return null
+        return com.ht.hjtk.core.GitHubPush { method, path, body ->
+            val r = com.ht.hjtk.engine.GitHubHttp.call(method, "https://api.github.com$path", body?.toString(), ghHeaders())
+            r.first to r.second
+        }
+    }
+    /** 올릴 파일: path가 있으면 그 폴더·파일, 없으면 이 작업 → 같은 대화의 최근 작업 결과물 */
+    private fun pushFiles(path: String): List<com.ht.hjtk.core.GitHubPush.File> {
+        fun collect(root: File): List<com.ht.hjtk.core.GitHubPush.File> = if (root.isFile) listOf(com.ht.hjtk.core.GitHubPush.File(root.name, root.readBytes()))
+            else root.walkTopDown().filter { it.isFile }.take(300).map { com.ht.hjtk.core.GitHubPush.File(it.relativeTo(root).path.replace('\\', '/'), it.readBytes()) }.toList()
+        if (path.isNotBlank()) {
+            val cands = listOf(File(dir, path), File(store.workspace, path))
+            cands.firstOrNull { it.exists() && it.canonicalPath.startsWith(store.workspace.canonicalPath) }?.let { return collect(it) }
+            return emptyList()
+        }
+        collect(dir).takeIf { it.isNotEmpty() }?.let { return it }
+        store.jobs.value.filter { it.convId == convId && it.id != jobId }.sortedByDescending { it.updatedAt }.forEach { j ->
+            val d = store.jobDir(j.id); collect(d).takeIf { it.isNotEmpty() }?.let { return it }
+        }
+        return emptyList()
     }
 
     private suspend fun mailDo(c: CommandCall, f: suspend (com.ht.hjtk.data.MailAccount, String) -> String): CommandResult {

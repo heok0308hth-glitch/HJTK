@@ -153,6 +153,12 @@
     if (n.length === n0 && n0 > 0 && t.slice(-300) !== last0) return t;
     return '';
   };
+  /** 작업 중지: 생성 중이면 '중지' 버튼(이름표가 있는 것만)을 누른다 */
+  window.__hjtkStopGen = function () {
+    var bs = [].slice.call(document.querySelectorAll('div[role="button"],button'));
+    for (var i = 0; i < bs.length; i++) { var l = (bs[i].getAttribute('aria-label') || '') + ' ' + (bs[i].title || ''); if (/stop|중지|停止/i.test(l)) { bs[i].click(); return 'STOPPED'; } }
+    return 'IDLE';
+  };
   /** 페이지 새로고침 없이 새 대화(SPA 버튼). 못 찾으면 NONE → 앱이 주소를 다시 연다 */
   window.__hjtkNewChat = function () {
     var re = /^(开启新对话|新对话|New chat|새 채팅|새로운 채팅|새 대화|開啟新對話)$/i;
