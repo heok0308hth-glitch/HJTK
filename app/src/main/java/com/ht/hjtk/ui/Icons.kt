@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 enum class I { Chat, Tasks, Hub, Tools, Send, Plus, Slash, Pause, Play, Stop, Check, Close, Gear, Mail, Globe, Cal, File, Spark, Paw, Chevron, Back, Search, Pin, Export, Trash, Eye, Bell, Menu, Key, Link, Flow, Up, Down, Image, Phone, Mic, Speaker, Keypad, Wave }
 
 @Composable
-fun Ico(i: I, size: Dp = 22.dp, color: Color = Color(0xFF121212), modifier: Modifier = Modifier) {
+fun Ico(i: I, size: Dp = 22.dp, color: Color = C.Ink, modifier: Modifier = Modifier) {
     Canvas(modifier.size(size)) {
         val s = this.size.width / 24f
         val st = Stroke(width = 1.7f * s, cap = StrokeCap.Round, join = StrokeJoin.Round)

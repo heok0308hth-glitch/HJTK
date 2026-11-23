@@ -58,6 +58,8 @@ class HjtkApp : Application() {
         com.ht.hjtk.engine.CrashLog.install(this)
         com.ht.hjtk.engine.Thermal.install(this)
         com.ht.hjtk.engine.UsageLog.install(this)
+        com.ht.hjtk.engine.WebAiHub.install(this)
+        com.ht.hjtk.ui.C.load(this)
         com.ht.hjtk.engine.Routines.install(this)
         com.ht.hjtk.engine.Routines.rescheduleAll(this)
         Notifier.channels(this)

@@ -117,4 +117,37 @@ class EngineTest {
         assertTrue(G.check("010-1111-2222", List(5) { "+82100000000$it" to now - 1000L }, now)!!.contains("5통"))
         assertTrue(G.disclosure("허태혁").contains("AI 비서"))
     }
+
+    @Test fun heatForecastRisesFastFallsSlow() {
+        val T = com.ht.hjtk.engine.Thermal
+        assertEquals(0, T.decide(0, 0, 0.3f, 33f, false))
+        assertEquals(2, T.decide(0, 0, 0.85f, 35f, false))     // 10초 뒤 예보만으로 미리 줄인다
+        assertEquals(3, T.decide(1, 0, Float.NaN, 45f, false))  // 배터리 45°C
+        assertEquals(2, T.decide(3, 0, 0.62f, 40f, false))      // 내릴 때는 한 단계씩
+        assertEquals(1, T.decide(1, 0, 0.5f, 37f, true))        // 절전 모드는 최소 1
+    }
+
+    /** 안드로이드 정규식(ICU)은 짝 없는 '}'나 수량자가 아닌 '{'를 오류로 본다(자바는 통과) — 3.0.0의 공정 오류 재발 방지 */
+    @Test fun regexesAreValidOnAndroid() {
+        val bad = ArrayList<String>()
+        java.io.File("src/main/java").walkTopDown().filter { it.extension == "kt" }.forEach { f ->
+            val src = f.readText()
+            Regex("Regex\\(\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").findAll(src).forEach { m ->
+                val raw = m.groupValues[1].replace("\\\\", "\\")
+                var i = 0; var cls = false
+                while (i < raw.length) {
+                    val c = raw[i]
+                    when {
+                        c == '\\' -> i++
+                        cls -> if (c == ']') cls = false
+                        c == '[' -> cls = true
+                        c == '{' -> { val q = Regex("^\\{\\d+(,\\d*)?\\}").find(raw.substring(i)); if (q != null) i += q.value.length - 1 else bad += "${f.name}: $raw" }
+                        c == '}' -> bad += "${f.name}: $raw"
+                    }
+                    i++
+                }
+            }
+        }
+        assertTrue(bad.joinToString("\n"), bad.isEmpty())
+    }
 }

@@ -44,6 +44,7 @@ sealed interface Route {
     data object Pc : Route
     data object Routines : Route
     data object Usage : Route
+    data object AiLogin : Route
 }
 
 enum class Mode(val label: String) { AUTO("자동"), QUICK("대화"), MISSION("작업 맡기기") }
@@ -73,6 +74,8 @@ class MainVm(val h: Hjtk) {
     val phonePrefill = MutableStateFlow("")
     /** HJTK 안 브라우저로 열 주소 */
     val webUrl = MutableStateFlow("")
+    /** AI 로그인 화면에서 열 회사 */
+    val loginTab = MutableStateFlow(com.ht.hjtk.core.ai.Provider.CLAUDE)
     fun openWeb(url: String) { webUrl.value = url; go(Route.Browser) }
     val difficulty = MutableStateFlow(h.ai.state.value.difficulty)
 

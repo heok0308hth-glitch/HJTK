@@ -84,6 +84,13 @@ fun SettingsScreen(vm: MainVm) {
                 Text(if (I18n.en) "Language" else "언어", style = T.body, modifier = Modifier.weight(1f))
                 Segmented(listOf("ko" to "한국어", "en" to "English"), if (I18n.en) "en" else "ko") { v -> vm.store.updateSettings { it.copy(lang = v) } }
             }
+            Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(I18n.t("화면"), style = T.body, modifier = Modifier.weight(1f))
+                Segmented(listOf("dark" to I18n.t("다크"), "light" to I18n.t("라이트")), if (C.dark) "dark" else "light") { v -> C.save(ctx, v == "dark") }
+            }
+            val heat by com.ht.hjtk.engine.Thermal.level.collectAsState()
+            Text(I18n.t("발열 관리") + " · " + com.ht.hjtk.engine.Thermal.label() + (com.ht.hjtk.engine.Thermal.batteryC.value.takeIf { !it.isNaN() }?.let { " · 배터리 %.1f°C".format(it) } ?: "") + if (heat >= 2) " · 무거운 일은 식을 때까지 미뤄요" else "",
+                style = T.small.copy(fontSize = 12.sp, color = if (heat >= 2) C.Red else C.Graphite), modifier = Modifier.padding(bottom = 6.dp))
             NumRow(0, I18n.t("AI 모델 · 계정 · 난이도"), "Claude · ChatGPT · Gemini · Grok · DeepSeek · 모델 세부 설정 · 역할 분담", onClick = { vm.go(Route.Ai) })
             Spacer(Modifier.height(14.dp)); Label(I18n.t("작업 공정 · 검토 AI(AI끼리 협업)"))
             Segmented(listOf("auto" to "자동", "gemini" to "Gemini", "deepseek2" to "DeepSeek 2창", "off" to "끄기"), s.collab) { m -> vm.store.updateSettings { it.copy(collab = m) } }

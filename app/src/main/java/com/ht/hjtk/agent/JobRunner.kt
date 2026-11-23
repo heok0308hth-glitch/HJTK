@@ -234,7 +234,8 @@ class JobRunner(private val h: Hjtk) {
             null -> null
             com.ht.hjtk.core.ai.Transport.API -> h.ai.apiPort(a, job.id + ":" + role.name, stateless = h.ai.state.value.saveTokens)
             com.ht.hjtk.core.ai.Transport.APP -> h.ai.appPort(a, l.budget, s.geminiWaitMin * 60_000L)
-            com.ht.hjtk.core.ai.Transport.WEB -> JobLlm(job.id, h.deepseek, critic = role == com.ht.hjtk.core.ai.Role.REVIEW)
+            com.ht.hjtk.core.ai.Transport.WEB -> if (a.member.provider == com.ht.hjtk.core.ai.Provider.DEEPSEEK) JobLlm(job.id, h.deepseek, critic = role == com.ht.hjtk.core.ai.Role.REVIEW)
+                else com.ht.hjtk.engine.WebAiHub.port(a.member.provider)
         }
         val writer = portOf(team[AiRole.WRITE], AiRole.WRITE) ?: JobLlm(job.id, port())
         val roster = LinkedHashMap<String, String>().apply { team.forEach { (r, a) -> put(r.label, a.name + " · " + a.why) } }
@@ -512,7 +513,21 @@ class JobRunner(private val h: Hjtk) {
             try { port.send(text, convId, 1, false) } finally { streamingConv.value = null }
         }
         com.ht.hjtk.core.ai.Transport.APP -> h.ai.appPort(a, TapBudget(1), store.settings.value.geminiWaitMin * 60_000L).send(text, convId, 1, true)
+        com.ht.hjtk.core.ai.Transport.WEB -> if (a.member.provider == com.ht.hjtk.core.ai.Provider.DEEPSEEK) webChat(convId, text) else webAiChat(convId, text, a.member.provider)
         else -> webChat(convId, text)
+    }
+
+    /** 로그인해 둔 AI 웹으로 대화: 대화마다 그 사이트의 대화방을 이어 쓴다 */
+    private val webAiRooms = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private suspend fun webAiChat(convId: String, text: String, p: com.ht.hjtk.core.ai.Provider): LlmReply {
+        val port = com.ht.hjtk.engine.WebAiHub.port(p) ?: return LlmReply("", "NO_WEB", false, 0)
+        val key = "$convId|${p.name}"
+        val room = webAiRooms[key]
+        if (room != null) port.ensureSession(room)
+        streamingConv.value = convId
+        val r = try { port.send(text, convId, 1, room == null) } finally { streamingConv.value = null }
+        port.lastUrl?.takeIf { it != port.site.home && r.text.isNotBlank() }?.let { webAiRooms[key] = it }
+        return r
     }
 
     /** DeepSeek 웹: 작업이 주 창을 잡고 있으면 대화용 창으로 */
@@ -677,6 +692,10 @@ class JobRunner(private val h: Hjtk) {
             if (ok) { store.msg(convId, Role.SYSTEM, "로그인을 확인했어요 · 이어서 보냅니다", "note"); askOnce(convId, text, waitForLogin = false, pinned) }
             else store.msg(convId, Role.SYSTEM, "로그인을 10분 기다렸어요. 로그인한 뒤 다시 보내 주세요.", "error", mapOf("via" to r.via))
             return
+        }
+        if (r.via == "NEEDS_LOGIN" && a?.member?.transport == com.ht.hjtk.core.ai.Transport.WEB && a.member.provider != com.ht.hjtk.core.ai.Provider.DEEPSEEK) {
+            com.ht.hjtk.engine.WebAiHub.setLoggedIn(a.member.provider, false)
+            store.msg(convId, Role.SYSTEM, "${a.member.provider.label} 로그인이 풀렸어요. 허브 → AI 로그인에서 다시 로그인해 주세요.", "error", mapOf("via" to r.via, "login" to a.member.provider.name)); return
         }
         val why = if (r.via == "API_ERR") "$name 연결 오류예요. 설정 → AI 모델에서 키와 모델 이름을 확인해 주세요." else if (r.via == "NO_KEY") "$name 키가 없어요. 설정 → AI 모델에서 추가하거나 다른 모델을 고르세요." else explain(r.via)
         store.msg(convId, Role.SYSTEM, why, "error", mapOf("via" to r.via))

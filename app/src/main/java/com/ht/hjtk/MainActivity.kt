@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         // DeepSeek 화면을 앱 화면 '뒤'에 붙인다: 실제 크기로 그려져야 입력창·버튼이 동작한다(첫 프레임 뒤 유휴 시간에 생성)
         Hjtk.get(this).deepseek.dock(findViewById(android.R.id.content))
+        com.ht.hjtk.engine.WebAiHub.dock(findViewById(android.R.id.content))
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -39,6 +40,8 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         // 액티비티 창에서 떼어 낸다(누수 방지). 진행 중인 답은 투명 창 또는 창 없는 상태에서 계속 받는다.
         Hjtk.get(this).deepseek.undock()
+        com.ht.hjtk.engine.WebAiHub.undock()
+        com.ht.hjtk.engine.WebAiHub.trimAll()
         super.onStop()
     }
 

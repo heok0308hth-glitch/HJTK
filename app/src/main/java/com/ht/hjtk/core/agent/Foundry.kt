@@ -273,7 +273,7 @@ class Foundry(
         val prev = outputs.values.lastOrNull().orEmpty()
         var t = v.replace("{goal}", ctx.goal).replace("{prev}", prev.take(3000)).replace("{today}", java.time.LocalDate.now().toString())
         if (t.contains("{links}")) t = t.replace("{links}", Regex("https?://[^\\s)\\]>\"']+").findAll(prev).map { it.value.trimEnd('.', ',') }.distinct().take(5).joinToString("\n"))
-        Regex("\\{s(\\d+)}").findAll(t).toList().forEach { m -> t = t.replace(m.value, outputs["s${m.groupValues[1]}"].orEmpty().take(3000)) }
+        Regex("\\{s(\\d+)\\}").findAll(t).toList().forEach { m -> t = t.replace(m.value, outputs["s${m.groupValues[1]}"].orEmpty().take(3000)) }
         return t
     }
 
@@ -567,7 +567,7 @@ object FoundryPrompts {
 object FoundryParse {
     fun json(text: String): JSONObject? {
         if (text.isBlank()) return null
-        val fence = Regex("```(?:json)?\\s*(\\{.*?})\\s*```", RegexOption.DOT_MATCHES_ALL).find(text)?.groupValues?.get(1)
+        val fence = Regex("```(?:json)?\\s*(\\{.*?\\})\\s*```", RegexOption.DOT_MATCHES_ALL).find(text)?.groupValues?.get(1)
         fence?.let { f -> runCatching { return JSONObject(f) } }
         val start = text.indexOf('{'); if (start < 0) return null
         var depth = 0; var inStr = false; var esc = false

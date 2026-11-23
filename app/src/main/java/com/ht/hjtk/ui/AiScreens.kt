@@ -68,14 +68,15 @@ fun ModelPickerSheet(vm: MainVm) {
                         Label(when { mine.any { it.transport == Transport.API } -> "API"; mine.any { it.transport == Transport.WEB } -> "키 없이"; mine.any { it.transport == Transport.APP } -> "앱 연결"; else -> "연결 안 됨" },
                             color = if (mine.isEmpty()) C.Red else C.Mute)
                     }
-                    if (mine.isEmpty()) Text("설정 → AI 모델에서 키를 넣거나 ${p.label} 앱을 설치하면 쓸 수 있어요", style = T.small.copy(fontSize = 12.sp, color = C.Graphite), modifier = Modifier.padding(start = 46.dp, bottom = 4.dp))
+                    if (mine.isEmpty()) Text(I18n.t("키 없이 로그인해서 쓰기 →"), style = T.small.copy(fontSize = 13.sp, color = C.Ink, fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.padding(start = 46.dp, bottom = 6.dp).press({ vm.pickerOpen.value = false; vm.loginTab.value = p; vm.go(Route.AiLogin) }).padding(vertical = 6.dp))
                     mine.forEach { m ->
                         when (m.transport) {
                             Transport.API -> ModelCatalog.of(p).forEach { md ->
                                 val v = "${m.key}|${md.id}"
                                 PickRow(st.chatPin == v, md.label + if (m.accountLabel.isNotBlank()) " · ${m.accountLabel}" else "", md.note, md.tier) { pick(v) }
                             }
-                            Transport.WEB -> PickRow(st.chatPin == m.key, "DeepSeek 웹", "키 없이 · 앱 안에서 로그인한 DeepSeek", null) { pick(m.key) }
+                            Transport.WEB -> PickRow(st.chatPin == m.key, "${p.label} 웹", "키 없이 · HJTK 안에서 로그인한 ${p.label}", null) { pick(m.key) }
                             Transport.APP -> PickRow(st.chatPin == m.key, "${p.label} 앱", "키 없이 · 앱에서 답을 복사하고 돌아오면 받아요", null) { pick(m.key) }
                         }
                     }

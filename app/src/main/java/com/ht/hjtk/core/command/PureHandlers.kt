@@ -302,7 +302,7 @@ object TextOps {
         val i = l.indexOf('='); if (i <= 0) null else l.substring(0, i).trim() to l.substring(i + 1).trim()
     }.toMap(LinkedHashMap())
 
-    fun template(t: String, vars: Map<String, String>): String = Regex("\\{([^{}]+)}").replace(t) { m -> vars[m.groupValues[1].trim()] ?: m.value }
+    fun template(t: String, vars: Map<String, String>): String = Regex("\\{([^{}]+)\\}").replace(t) { m -> vars[m.groupValues[1].trim()] ?: m.value }
 
     private val stop = setOf("그리고", "하지만", "그러나", "the", "a", "an", "and", "or", "of", "to", "in", "is", "for", "이", "그", "저", "것", "수", "등", "및")
     fun wordFreq(t: String, n: Int): List<Pair<String, Int>> =

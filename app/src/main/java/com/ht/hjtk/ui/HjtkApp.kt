@@ -71,6 +71,7 @@ fun HjtkApp(vm: MainVm) {
                         Route.Pc -> PcScreen(vm)
                         Route.Routines -> RoutinesScreen(vm)
                         Route.Usage -> UsageScreen(vm)
+                        Route.AiLogin -> AiLoginScreen(vm)
                         is Route.Job -> JobScreen(vm, r.id)
                         is Route.Command -> CommandScreen(vm, r.id)
                         is Route.PipelineEdit -> PipelineEditScreen(vm, r.id)
@@ -89,7 +90,8 @@ fun HjtkApp(vm: MainVm) {
     }
 }
 
-private val tabs = listOf(Triple(Route.Chat, I.Chat, "대화"), Triple(Route.Tasks, I.Tasks, "작업"), Triple(Route.Hub, I.Hub, "허브"), Triple(Route.Tools, I.Tools, "도구"))
+// 3.1: 탭 세 개로 줄였다(도구·설정은 허브 안). 자주 쓰는 것만 손 닿는 곳에
+private val tabs = listOf(Triple(Route.Chat, I.Chat, "대화"), Triple(Route.Tasks, I.Tasks, "작업"), Triple(Route.Hub, I.Hub, "허브"))
 
 @Composable
 private fun BottomBar(vm: MainVm, route: Route, pending: Int) {
@@ -113,11 +115,13 @@ private fun BottomBar(vm: MainVm, route: Route, pending: Int) {
 /** 대화 화면에서는 입력창이 아래를 차지하므로 탭을 얇은 띠로 */
 @Composable
 private fun BottomBarSlim(vm: MainVm, pending: Int) {
-    Row(Modifier.fillMaxWidth().background(C.Ink).navigationBarsPadding().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+    // 다크에서는 먹색 띠가 밝게 뒤집히므로 한 톤 밝은 바탕으로
+    val bg = if (C.dark) C.Paper2 else C.Ink; val on = if (C.dark) C.Ink else C.OnInk; val off = if (C.dark) C.Mute else C.OnInkMute
+    Row(Modifier.fillMaxWidth().background(bg).navigationBarsPadding().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
         tabs.forEach { (r, ic, l0) -> val l = I18n.t(l0)
             Row(Modifier.weight(1f).fillMaxHeight().press({ vm.tab(r) }), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Ico(ic, 16.dp, if (r == Route.Chat) C.OnInk else C.OnInkMute); Spacer(Modifier.width(6.dp))
-                Text(l, style = T.label.copy(fontSize = 10.5.sp, color = if (r == Route.Chat) C.OnInk else C.OnInkMute, letterSpacing = 0.6.sp))
+                Ico(ic, 16.dp, if (r == Route.Chat) on else off); Spacer(Modifier.width(6.dp))
+                Text(l, style = T.label.copy(fontSize = 10.5.sp, color = if (r == Route.Chat) on else off, letterSpacing = 0.6.sp))
                 if (r == Route.Tasks && pending > 0) { Spacer(Modifier.width(4.dp)); SignalDot(C.Red, 6.dp, pulse = true) }
             }
         }

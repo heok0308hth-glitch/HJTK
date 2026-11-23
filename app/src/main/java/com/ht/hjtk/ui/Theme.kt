@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
@@ -41,19 +42,37 @@ import com.ht.hjtk.R
  * 카드의 오른쪽 위 모서리는 접혀 있다 — 로고의 접힌 종이새에서 온 유일한 장식.
  */
 object C {
-    val Paper = Color(0xFFF3F0E8)
-    val Paper2 = Color(0xFFEAE6DC)
-    val Paper3 = Color(0xFFE0DBCE)
-    val Ink = Color(0xFF121212)
-    val Ink2 = Color(0xFF262624)
-    val Ink3 = Color(0xFF3A3936)
-    val Graphite = Color(0xFF6D695F)
-    val Mute = Color(0xFF9A958B)
-    val Hair = Color(0xFFD5CFC1)
-    val Red = Color(0xFFE2442F)
-    val RedSoft = Color(0xFFF5DAD3)
-    val OnInk = Color(0xFFF3F0E8)
-    val OnInkMute = Color(0xFF8E8A80)
+    /** 다크 모드(기본 켬). 바꾸면 화면을 다시 그린다 — 모든 색은 이 한 곳에서 나온다 */
+    private val darkState = mutableStateOf(true)
+    var dark: Boolean get() = darkState.value; set(v) { darkState.value = v }
+    fun load(ctx: android.content.Context) { dark = ctx.getSharedPreferences("look", 0).getBoolean("dark", true) }
+    fun save(ctx: android.content.Context, v: Boolean) { dark = v; ctx.getSharedPreferences("look", 0).edit().putBoolean("dark", v).apply() }
+    private val PaperL = Color(0xFFF3F0E8); private val PaperD = Color(0xFF121214)
+    val Paper: Color get() = if (dark) PaperD else PaperL
+    private val Paper2L = Color(0xFFEAE6DC); private val Paper2D = Color(0xFF1B1B1E)
+    val Paper2: Color get() = if (dark) Paper2D else Paper2L
+    private val Paper3L = Color(0xFFE0DBCE); private val Paper3D = Color(0xFF26262A)
+    val Paper3: Color get() = if (dark) Paper3D else Paper3L
+    private val InkL = Color(0xFF121212); private val InkD = Color(0xFFEDEAE3)
+    val Ink: Color get() = if (dark) InkD else InkL
+    private val Ink2L = Color(0xFF262624); private val Ink2D = Color(0xFFD9D5CC)
+    val Ink2: Color get() = if (dark) Ink2D else Ink2L
+    private val Ink3L = Color(0xFF3A3936); private val Ink3D = Color(0xFFB8B4AA)
+    val Ink3: Color get() = if (dark) Ink3D else Ink3L
+    private val GraphiteL = Color(0xFF6D695F); private val GraphiteD = Color(0xFFA19D93)
+    val Graphite: Color get() = if (dark) GraphiteD else GraphiteL
+    private val MuteL = Color(0xFF9A958B); private val MuteD = Color(0xFF76726A)
+    val Mute: Color get() = if (dark) MuteD else MuteL
+    private val HairL = Color(0xFFD5CFC1); private val HairD = Color(0xFF2C2C30)
+    val Hair: Color get() = if (dark) HairD else HairL
+    private val RedL = Color(0xFFE2442F); private val RedD = Color(0xFFF0573F)
+    val Red: Color get() = if (dark) RedD else RedL
+    private val RedSoftL = Color(0xFFF5DAD3); private val RedSoftD = Color(0xFF3A201B)
+    val RedSoft: Color get() = if (dark) RedSoftD else RedSoftL
+    private val OnInkL = Color(0xFFF3F0E8); private val OnInkD = Color(0xFF121214)
+    val OnInk: Color get() = if (dark) OnInkD else OnInkL
+    private val OnInkMuteL = Color(0xFF8E8A80); private val OnInkMuteD = Color(0xFF5F5B54)
+    val OnInkMute: Color get() = if (dark) OnInkMuteD else OnInkMuteL
 }
 
 val Pretendard = FontFamily(
@@ -63,14 +82,14 @@ val Pretendard = FontFamily(
 )
 
 object T {
-    val display = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.6).sp, color = C.Ink)
-    val title = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 26.sp, letterSpacing = (-0.3).sp, color = C.Ink)
-    val head = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = (-0.2).sp, color = C.Ink)
-    val body = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 23.sp, color = C.Ink)
-    val small = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 19.sp, color = C.Graphite)
-    val label = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, fontSize = 10.5.sp, lineHeight = 14.sp, letterSpacing = 1.1.sp, color = C.Mute)
-    val mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 17.sp, color = C.Ink3)
-    val num = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 0.5.sp, color = C.Mute)
+    val display get() = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.6).sp, color = C.Ink)
+    val title get() = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 26.sp, letterSpacing = (-0.3).sp, color = C.Ink)
+    val head get() = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = (-0.2).sp, color = C.Ink)
+    val body get() = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 23.sp, color = C.Ink)
+    val small get() = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 19.sp, color = C.Graphite)
+    val label get() = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, fontSize = 10.5.sp, lineHeight = 14.sp, letterSpacing = 1.1.sp, color = C.Mute)
+    val mono get() = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 17.sp, color = C.Ink3)
+    val num get() = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 0.5.sp, color = C.Mute)
 }
 
 /** 오른쪽 위가 접힌 모서리, 나머지는 작은 라운드 */
@@ -94,7 +113,16 @@ fun Modifier.drawWithFold(color: Color, cut: Dp = 12.dp) = this.then(Modifier.dr
 
 @Composable
 fun HjtkTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = lightColorScheme(primary = C.Ink, onPrimary = C.OnInk, background = C.Paper, surface = C.Paper, onSurface = C.Ink, secondary = C.Red, outline = C.Hair)) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val dark = C.dark
+    // 상태 표시줄·내비게이션 막대 글자색도 바탕에 맞춘다
+    SideEffect {
+        (ctx as? androidx.activity.ComponentActivity)?.let { a -> a.enableEdgeToEdge(
+            if (dark) androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            if (dark) androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)) }
+    }
+    MaterialTheme(colorScheme = (if (dark) androidx.compose.material3.darkColorScheme(primary = C.Ink, onPrimary = C.OnInk, background = C.Paper, surface = C.Paper, onSurface = C.Ink, secondary = C.Red, outline = C.Hair)
+        else lightColorScheme(primary = C.Ink, onPrimary = C.OnInk, background = C.Paper, surface = C.Paper, onSurface = C.Ink, secondary = C.Red, outline = C.Hair))) {
         content()
     }
 }

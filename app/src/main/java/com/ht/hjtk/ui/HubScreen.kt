@@ -76,6 +76,7 @@ fun HubScreen(vm: MainVm) {
         val gemApp = vm.h.bridge.installed(ExternalAiBridge.GEMINI)
         val connectors = listOf(
             Connector("DeepSeek", if (ds == DeepSeekWeb.Status.READY) "두뇌 · 키 없이 연결됨" else "두뇌 · 한 번 로그인", if (ds == DeepSeekWeb.Status.READY) 2 else 1, I.Spark) { vm.go(Route.Cockpit) },
+            Connector(I18n.t("AI 로그인 · 키 없이"), com.ht.hjtk.engine.WebAiHub.loggedIn.value.let { s -> if (s.isEmpty()) "Claude · ChatGPT · Gemini · Grok" else s.joinToString(" · ") { it.label } + " 로그인됨" }, if (com.ht.hjtk.engine.WebAiHub.loggedIn.value.isNotEmpty()) 2 else 1, I.Key) { vm.go(Route.AiLogin) },
             Connector(I18n.t("AI 모델 · 5개 회사"), vm.h.ai.members().joinToString(" · ") { it.provider.label }.ifBlank { "Claude · ChatGPT · Gemini · Grok · DeepSeek" }, if (vm.h.ai.members().size > 1) 2 else 1, I.Spark) { vm.go(Route.Ai) },
             Connector(I18n.t("계정 연결"), "GitHub · Notion · 네이버 API · AI 전화 · 로그인 사이트", if (vm.h.connectors.accounts.value.isNotEmpty()) 2 else 0, I.Key) { vm.go(Route.Accounts) },
             Connector(I18n.t("AI 전화"), vm.h.voice.summary() + " · 무료", if (vm.h.voice.packReady()) 2 else 0, I.Phone) { vm.go(Route.Phone) },
@@ -90,18 +91,31 @@ fun HubScreen(vm: MainVm) {
             Connector(I18n.t("구글 드라이브·파일"), "${files.size}개 고정 · 시스템 선택기", if (files.isNotEmpty()) 2 else 0, I.File) { docPicker.launch(arrayOf("*/*")) },
             Connector(I18n.t("네이버 검색"), if (st.secrets.has("naver_id")) "공식 API 키" else "키 없이 웹 결과", 2, I.Search) { vm.go(Route.Settings) },
             Connector(I18n.t("공유로 받기"), "다른 앱에서 HJTK로 공유하면 대화에 들어와요", 2, I.Export) { vm.go(Route.Settings) },
+            Connector(I18n.t("명령어 · 도구"), "AI가 쓰는 명령 ${com.ht.hjtk.core.command.CommandCatalog.ALL.size}개 · 직접 실행", 2, I.Tools) { vm.tab(Route.Tools) },
+            Connector(I18n.t("설정"), "언어 · 다크 모드 · 키 · 권한 · 백업", 2, I.Gear) { vm.go(Route.Settings) },
             Connector(I18n.t("백그라운드 유지"), if (Perms.overlay(ctx)) "앱을 나가도 DeepSeek 창이 살아 있어요" else "허용하면 앱 밖에서도 작업이 끊기지 않아요(선택)", if (Perms.overlay(ctx)) 2 else 1, I.Eye) { ctx.startActivity(Perms.overlayIntent(ctx)) }
         )
         Column(Modifier.fillMaxSize()) {
             TopBar("허브", "연동 ${connectors.count { it.state == 2 }}/${connectors.size} · 나만의 작업 공간")
             Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
-                SectionHead("01", I18n.t("연동 센터"))
-                Spacer(Modifier.height(10.dp))
-                connectors.chunked(2).forEach { row ->
+                // 자주 쓰는 넷은 크게, 나머지는 한 줄씩(찾기 쉽게)
+                val main = listOf("AI 로그인 · 키 없이", "AI 전화", "실시간 음성 대화", "루틴").map { I18n.t(it) }
+                val (top, rest) = connectors.partition { it.name in main }
+                Spacer(Modifier.height(14.dp))
+                top.sortedBy { main.indexOf(it.name) }.chunked(2).forEach { row ->
                     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { c -> ConnectorTile(c, Modifier.weight(1f)) }
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
+                }
+                SectionHead("01", I18n.t("모든 연결"))
+                rest.forEach { c ->
+                    Row(Modifier.fillMaxWidth().press(c.onClick).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Ico(c.icon, 20.dp, C.Ink); Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) { Text(c.name, style = T.head.copy(fontSize = 15.sp)); Text(c.sub, style = T.small.copy(fontSize = 12.sp), maxLines = 1) }
+                        SignalDot(when (c.state) { 2 -> C.Ink; 1 -> C.Red; else -> C.Hair }, 7.dp)
+                    }
+                    Hairline()
                 }
                 Text(I18n.t("서버 없이 동작합니다. 메일은 앱 비밀번호(IMAP/SMTP), 구글 캘린더는 기기 동기화, 파일은 시스템 선택기를 씁니다. 모든 키는 기기 Keystore에 암호화 저장됩니다."), style = T.small.copy(fontSize = 12.sp))
 

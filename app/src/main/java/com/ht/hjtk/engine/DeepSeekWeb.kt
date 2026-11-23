@@ -146,6 +146,7 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
                 CookieManager.getInstance().flush()          // 빠뜨리면 재시작마다 로그아웃
                 url?.let { lastUrl = it }
                 v.evaluateJavascript(js, null)               // document-start가 놓친 경우 대비(중복 실행은 스크립트가 막는다)
+                if (cockpit?.get() == null) v.evaluateJavascript(Thermal.FREEZE_CSS, null)
                 refreshState()
             }
             override fun doUpdateVisitedHistory(v: WebView, url: String?, isReload: Boolean) { url?.let { lastUrl = it } }   // SPA 내부 이동(/a/chat/s/…)
@@ -205,7 +206,7 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
 
     // ── 발열: 쓰지 않는 동안 렌더링을 멈춘다(DeepSeek 페이지의 커서 깜빡임 같은 상시 그리기 차단) ──
     private val pauseIdle = Runnable { if (cockpit?.get() == null && !mutex.isLocked) web?.onPause() }
-    private fun scheduleIdle() { main.removeCallbacks(pauseIdle); main.postDelayed(pauseIdle, if (Thermal.hot.value) 8_000L else 20_000L) }
+    private fun scheduleIdle() { main.removeCallbacks(pauseIdle); main.postDelayed(pauseIdle, when (Thermal.level.value) { 0 -> 20_000L; 1 -> 12_000L; else -> 5_000L }) }
 
     private fun moveTo(w: WebView, parent: ViewGroup) {
         if (w.parent !== parent) {
@@ -214,6 +215,8 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
             parent.addView(w, FrameLayout.LayoutParams(-1, -1))
         }
         w.onResume(); w.resumeTimers(); scheduleIdle()
+        // 조종석(사용자가 보는 중)이 아니면 애니메이션·커서 깜빡임을 얼린다: 숨은 화면이 GPU를 쓰지 않게
+        w.evaluateJavascript(if (cockpit?.get() != null) Thermal.THAW_CSS else Thermal.FREEZE_CSS, null)
     }
 
     private fun overlayPark(w: WebView): Boolean {

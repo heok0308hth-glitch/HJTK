@@ -7,4 +7,6 @@
     <string name="sc_task">작업 맡기기</string>
     <string name="sc_live">음성 대화</string>
     <string name="sc_pc">PC에서 쓰기</string>
+    <string name="ear_label">HJTK 통화 귀</string>
+    <string name="ear_desc">AI 통화 중에만 상대 목소리를 듣고 받아 적어요. 화면 내용은 읽지 않고, 녹음은 저장하지 않아요.</string>
 </resources>

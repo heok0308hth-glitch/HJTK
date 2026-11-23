@@ -186,7 +186,7 @@ class AepParser(private val maxJsonChars: Int = 96_000) {
             val c = t.indexOf(Envelope.CLOSE, o)
             t = if (c >= 0) t.removeRange(o, c + Envelope.CLOSE.length) else t.substring(0, o)
         }
-        t = t.replace(Regex("```(?:json)?\\s*\\{[\\s\\S]*?}\\s*```"), "")
+        t = t.replace(Regex("```(?:json)?\\s*\\{[\\s\\S]*?\\}\\s*```"), "")
         return t.trim()
     }
 

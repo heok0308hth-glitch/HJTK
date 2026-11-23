@@ -20,11 +20,9 @@ object PhoneHandlers {
         },
         "phone.ai_call" to CommandHandler { c ->
             val n = c.arg("number")
-            h.caller.prepare(n, c.arg("goal"), c.arg("facts"))?.let { return@CommandHandler CommandResult.fail(it) }
-            // 대본 + 미리 녹음(기기 속도에 따라 1~4분)
-            val ready = withTimeoutOrNull(8 * 60_000L) { h.caller.session.first { it.phase == AiCaller.Phase.READY || it.phase == AiCaller.Phase.ERROR } }
-            if (ready == null || ready.phase != AiCaller.Phase.READY) return@CommandHandler CommandResult.fail(ready?.note ?: "녹음이 늦어요. AI 전화 화면에서 이어서 걸 수 있어요")
-            h.caller.dial()?.let { return@CommandHandler CommandResult.fail(it) }
+            h.caller.start(n, c.arg("goal"), c.arg("facts"))?.let { return@CommandHandler CommandResult.fail(it) }
+            val st = withTimeoutOrNull(4 * 60_000L) { h.caller.session.first { it.phase == AiCaller.Phase.CALLING || it.phase == AiCaller.Phase.LIVE || it.phase == AiCaller.Phase.ERROR } }
+            if (st == null || st.phase == AiCaller.Phase.ERROR) return@CommandHandler CommandResult.fail(st?.note ?: "준비가 늦어요. AI 전화 화면에서 이어서 걸 수 있어요")
             h.app.startActivity(Intent(h.app, CallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             withTimeoutOrNull(30 * 60_000L) { h.caller.session.first { it.phase == AiCaller.Phase.ENDED } }
             delay(300)

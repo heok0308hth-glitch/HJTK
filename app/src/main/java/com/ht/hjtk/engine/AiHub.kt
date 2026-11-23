@@ -143,6 +143,8 @@ class AiHub(private val ctx: Context, private val store: Store, private val brid
             accs.sortedByDescending { it.isDefault }.forEach { a -> out += Member(p, Transport.API, a.id, if (accs.size > 1) a.label else "", pin) }
         }
         if (s.webDeepSeek) out += Member(Provider.DEEPSEEK, Transport.WEB)
+        // 3.1: 로그인해 둔 AI 웹(Claude·ChatGPT·Gemini·Grok) — 키 없이
+        WebAiHub.loggedIn.value.filter { it != Provider.DEEPSEEK }.sortedBy { it.ordinal }.forEach { out += Member(it, Transport.WEB) }
         // 3.0: 다른 AI 앱으로 넘기는 연결(Transport.APP)은 만들지 않는다 — 키(API) 또는 HJTK 안 웹만
         return out
     }

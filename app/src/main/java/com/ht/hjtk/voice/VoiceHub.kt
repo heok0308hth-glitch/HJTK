@@ -155,7 +155,7 @@ class VoiceHub(private val ctx: Context) {
 
     // ───────────── 합성 ─────────────
     private fun engine(): CbEngine = engine ?: synchronized(this) {
-        engine ?: CbEngine(modelDir, threads = if (Thermal.hot.value) 2 else (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 4)).also { engine = it }
+        engine ?: CbEngine(modelDir, threads = Thermal.threads()).also { engine = it }
     }
 
     /** 쓰지 않을 때 메모리(약 1GB)를 돌려준다 */

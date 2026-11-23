@@ -125,49 +125,44 @@ private fun InCall(h: Hjtk, l: CallCenter.Line) {
     }
 }
 
-/** AI 대본 패널: 상대 반응을 누르면 그 줄이 내 목소리로 나간다 */
+/** AI 통화 패널: 상황 버튼 없이 — 듣기·생각·말하기 상태와 대화록, 그리고 필요할 때만 한 줄 입력 */
 @Composable
 private fun AiPanel(h: Hjtk, s: AiCaller.Session, modifier: Modifier) {
     var note by remember { mutableStateOf("") }
+    val ear by com.ht.hjtk.call.Ear.listening.collectAsState()
+    val lvl by com.ht.hjtk.call.Ear.level.collectAsState()
+    val list = rememberScrollState()
+    LaunchedEffect(s.transcript.size) { list.animateScrollTo(list.maxValue) }
     Column(modifier.padding(horizontal = 16.dp)) {
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Night2).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Ico(I.Wave, 18.dp, if (s.speaking != null) C.Red else Dim)
-            Spacer(Modifier.width(10.dp))
-            Text(s.speaking ?: if (s.thinking) I18n.t("다음 말을 쓰는 중…") else s.transcript.lastOrNull()?.let { "${it.who}: ${it.text}" } ?: s.note,
-                style = T.small.copy(color = Color.White, fontSize = 13.5.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Night2).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            val (label, col) = when {
+                s.paused -> I18n.t("AI 멈춤 · 직접 말해도 돼요") to Dim
+                s.mind == AiCaller.Mind.SPEAKING -> I18n.t("말하는 중") to C.Red
+                s.mind == AiCaller.Mind.THINKING -> I18n.t("생각하는 중") to Color.White
+                ear -> I18n.t("듣는 중") to Color.White
+                else -> I18n.t("상대 말을 한 줄로 적어 주세요") to Dim
+            }
+            Ico(I.Wave, 18.dp, col); Spacer(Modifier.width(10.dp))
+            Text(label, style = T.head.copy(color = col, fontSize = 14.sp), modifier = Modifier.weight(1f))
+            if (ear && s.mind != AiCaller.Mind.SPEAKING) Box(Modifier.width(56.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Night3)) { Box(Modifier.fillMaxHeight().fillMaxWidth(lvl.coerceIn(0.02f, 1f)).background(Color.White)) }
+            Text(if (s.paused) I18n.t("재개") else I18n.t("멈춤"), style = T.small.copy(color = Color.White, fontWeight = FontWeight.Bold), modifier = Modifier.press({ h.caller.pause(!s.paused) }).padding(start = 12.dp, top = 4.dp, bottom = 4.dp))
         }
-        Spacer(Modifier.height(10.dp))
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(I18n.t("상대가 이렇게 말하면"), style = T.mono.copy(color = Dim, fontSize = 11.sp))
-            s.branches.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { b -> Branch(b, Modifier.weight(1f)) { h.caller.say(b) } }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+        Column(Modifier.weight(1f).padding(vertical = 10.dp).verticalScroll(list), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            s.transcript.forEach { t ->
+                val ai = t.who == "AI"
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (ai) Arrangement.End else Arrangement.Start) {
+                    Text(t.text, style = T.body.copy(color = if (ai) Night else Color.White, fontSize = 14.5.sp),
+                        modifier = Modifier.fillMaxWidth(0.82f).clip(RoundedCornerShape(14.dp)).background(if (ai) Color(0xFFEDEAE3) else Night2).padding(horizontal = 14.dp, vertical = 10.dp))
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Text(I18n.t("언제든"), style = T.mono.copy(color = Dim, fontSize = 11.sp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                (listOfNotNull(s.closing) + s.basics).forEach { b ->
-                    Text(b.label, style = T.small.copy(color = Color.White, fontSize = 13.sp), modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, Night3, RoundedCornerShape(50)).press({ h.caller.say(b) }).padding(horizontal = 12.dp, vertical = 8.dp))
-                }
-            }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).background(Night2).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Night2).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f).padding(vertical = 13.dp)) {
-                if (note.isEmpty()) Text(I18n.t("대본에 없으면 · 상대가 한 말을 짧게"), style = T.small.copy(color = Dim))
+                if (note.isEmpty()) Text(if (ear) I18n.t("AI 대신 할 말 (선택)") else I18n.t("상대가 한 말을 짧게"), style = T.small.copy(color = Dim))
                 BasicTextField(note, { note = it }, textStyle = T.body.copy(color = Color.White, fontSize = 14.sp), cursorBrush = SolidColor(C.Red), singleLine = true, modifier = Modifier.fillMaxWidth())
             }
-            Box(Modifier.size(46.dp).press({ h.caller.heard(note.trim()); note = "" }), contentAlignment = Alignment.Center) { Ico(I.Send, 20.dp, if (note.isBlank()) Dim else Color.White) }
+            Box(Modifier.size(46.dp).press({ val t = note.trim(); if (t.isNotEmpty()) { if (ear) h.caller.sayText(t) else h.caller.heard(t) }; note = "" }), contentAlignment = Alignment.Center) { Ico(I.Send, 20.dp, if (note.isBlank()) Dim else Color.White) }
         }
-    }
-}
-
-@Composable
-private fun Branch(b: AiCaller.Say, modifier: Modifier, onClick: () -> Unit) {
-    Column(modifier.clip(RoundedCornerShape(12.dp)).background(Night2).press(onClick).padding(12.dp)) {
-        Text(b.label, style = T.head.copy(color = Color.White, fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(b.text, style = T.small.copy(color = Dim, fontSize = 12.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

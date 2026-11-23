@@ -122,6 +122,12 @@
             </intent-filter>
         </activity>
         <receiver android:name=".call.CallActionReceiver" android:exported="false" />
+        <!-- 통화 귀: AI 통화 중 상대 목소리를 듣는다(Android는 통화 중 소리를 접근성 서비스에만 허락) -->
+        <service android:name=".call.EarService" android:exported="false" android:label="@string/ear_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/ear_service" />
+        </service>
         <service android:name=".engine.CaptureService" android:exported="false" android:foregroundServiceType="mediaProjection" />
     </application>
 </manifest>

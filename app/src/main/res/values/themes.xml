@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.HJTK" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@color/paper</item>
+    <style name="Theme.HJTK" parent="android:Theme.Material.NoActionBar">
+        <!-- 다크 모드가 기본: 첫 화면이 하얗게 번쩍이지 않게 -->
+        <item name="android:windowBackground">@color/night</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
     <style name="Theme.HJTK.Translucent" parent="android:Theme.Translucent.NoTitleBar">
         <item name="android:windowNoTitle">true</item>

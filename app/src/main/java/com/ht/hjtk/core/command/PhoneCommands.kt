@@ -12,7 +12,7 @@ object PhoneCommands {
 
     val specs: List<CommandSpec> = listOf(
         spec("phone.dial", "전화 다이얼", Effect.LOCAL, "number*:번호", "번호를 채운 HJTK 다이얼을 연다(통화 버튼은 사용자)", "전화걸기"),
-        spec("phone.ai_call", "AI가 전화 걸기", Effect.MONEY, "number*:번호|goal*:통화 목적(무엇을 알아내거나 요청할지)|facts:AI가 말해도 되는 정보(이름·예약 시간 등)", "기기 안 음성(내 목소리)으로 대본을 미리 녹음하고 건다 · 사용자가 반응을 고르면 대답 · 대화록을 돌려준다", "ai전화"),
+        spec("phone.ai_call", "AI가 전화 걸기", Effect.MONEY, "number*:번호|goal*:통화 목적(무엇을 알아내거나 요청할지)|facts:AI가 말해도 되는 정보(이름·예약 시간 등)", "내 목소리로 AI가 직접 통화한다(듣고·생각하고·말하기) · 끝나면 대화록을 돌려준다", "ai전화"),
     )
 }
 

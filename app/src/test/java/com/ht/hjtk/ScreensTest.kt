@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.ht.hjtk.call.AiCaller.Say as CSay
+import com.ht.hjtk.call.AiCaller.Turn as Tn
 import com.ht.hjtk.data.JobRec
 import com.ht.hjtk.data.Role
 import com.ht.hjtk.ui.*
@@ -158,12 +159,13 @@ class ScreensTest {
         com.ht.hjtk.call.CallCenter.lines.value = emptyList()
     }
     @Test fun s33_callAi() {
-        com.ht.hjtk.call.CallCenter.lines.value = listOf(com.ht.hjtk.call.CallCenter.Line(2, "02-6205-1180", null, android.telecom.Call.STATE_ACTIVE, System.currentTimeMillis() - 83_000, false, ai = true))
-        vm.h.caller.session.value = com.ht.hjtk.call.AiCaller.Session(number = "02-6205-1180", phase = com.ht.hjtk.call.AiCaller.Phase.LIVE, speaking = "혹시 8시나 일요일 같은 시간은 어떨까요?",
-            branches = listOf(CSay("b0", "가능하다", "좋아요, 허태혁 이름으로 4명 예약 부탁드립니다."), CSay("b1", "자리가 없다", "혹시 8시나 일요일 같은 시간은 어떨까요?"), CSay("b2", "연락처 물음", "연락처는 이 번호로 남겨 주시면 됩니다."), CSay("b3", "보증금 안내", "보증금은 본인이 직접 확인하고 다시 연락드릴게요."), CSay("b4", "담당자 연결", "네, 연결 부탁드립니다.")),
-            closing = CSay("close", "마무리", "확인 감사합니다."), basics = listOf(CSay("b_repeat", "다시 말해 달라", ""), CSay("b_wait", "잠깐 기다려", ""), CSay("b_ai", "AI냐고 물음", "")))
+        com.ht.hjtk.call.CallCenter.lines.value = listOf(com.ht.hjtk.call.CallCenter.Line(2, "0262051180", null, android.telecom.Call.STATE_ACTIVE, System.currentTimeMillis() - 83_000, false, ai = true))
+        vm.h.caller.session.value = com.ht.hjtk.call.AiCaller.Session(number = "0262051180", phase = com.ht.hjtk.call.AiCaller.Phase.LIVE, mind = com.ht.hjtk.call.AiCaller.Mind.THINKING,
+            transcript = listOf(Tn("AI", "안녕하세요, 저는 허태혁님을 대신해 전화드리는 AI 비서입니다. 이번 주 토요일 저녁 7시에 4명 예약 가능할까요?"),
+                Tn("상대", "토요일 7시는 다 찼고요, 8시 반은 돼요."), Tn("AI", "그럼 8시 반으로 4명 부탁드려요. 예약자는 허태혁입니다."), Tn("상대", "연락처 하나 남겨 주시겠어요?")))
         shot("33_call_ai") { com.ht.hjtk.ui.CallScreen(vm.h, "", onClose = {}) }
         com.ht.hjtk.call.CallCenter.lines.value = emptyList()
     }
+    @Test fun s35_hubLight() { com.ht.hjtk.ui.C.dark = false; vm.go(Route.Hub); shot("35_hub_light") { HjtkApp(vm) }; com.ht.hjtk.ui.C.dark = true }
     @Test fun s34_dialer() { shot("34_dialer") { com.ht.hjtk.ui.CallScreen(vm.h, "0262051180", onClose = {}) } }
 }
