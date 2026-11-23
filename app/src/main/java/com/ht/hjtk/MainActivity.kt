@@ -9,6 +9,7 @@ import com.ht.hjtk.data.Role
 import com.ht.hjtk.ui.HjtkApp
 import com.ht.hjtk.ui.MainVm
 import com.ht.hjtk.ui.Route
+import com.ht.hjtk.ui.Mode
 
 class MainActivity : ComponentActivity() {
     private lateinit var vm: MainVm
@@ -46,9 +47,15 @@ class MainActivity : ComponentActivity() {
         i.getStringExtra("shared")?.let { t ->
             vm.newChat(); vm.store.msg(vm.convId.value, Role.SYSTEM, "공유받은 내용", "note"); vm.draft.value = t
         }
+        i.getStringExtra("sharedImage")?.let { path -> vm.newChat(); vm.attachImage(android.net.Uri.fromFile(java.io.File(path))) }
         when (val r = i.getStringExtra("route")) {
             null -> {}
             "tasks" -> vm.tab(Route.Tasks)
+            // 앱 아이콘 길게 누르기 바로가기
+            "new" -> vm.newChat()
+            "task" -> { vm.newChat(); vm.mode.value = Mode.MISSION }
+            "live" -> vm.go(Route.Live)
+            "pc" -> vm.go(Route.Pc)
             else -> when {
                 r.startsWith("job:") -> vm.go(Route.Job(r.removePrefix("job:")))
                 r.startsWith("need:") -> {

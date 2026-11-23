@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -264,6 +265,7 @@ fun MessageView(vm: MainVm, m: Msg, actions: Boolean = false) {
         "card" -> FoldCard(Modifier.fillMaxWidth()) { Label(m.meta["title"] ?: "카드"); Spacer(Modifier.height(6.dp)); MdText(m.text) }
         "artifact" -> ArtifactRow(vm, m)
         "screen" -> ScreenCard(m)
+        "image" -> ImageBubble(m)
         "note" -> Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(14.dp).height(1.dp).background(C.Hair)); Spacer(Modifier.width(8.dp)); Text(m.text, style = T.small.copy(fontSize = 12.sp, color = C.Mute))
         }
@@ -278,7 +280,8 @@ private fun UserBubble(m: Msg) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(max = 300.dp)) {
             if (m.meta["mission"] == "true" || m.meta["expanded"] != null) Label(if (m.meta["expanded"] != null) "사용자 명령 → 작업" else "작업으로 맡김", Modifier.padding(bottom = 4.dp), C.Red)
-            Box(Modifier.clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)).background(C.Ink).padding(horizontal = 14.dp, vertical = 10.dp)) {
+            m.meta["image"]?.let { Thumb(it, 220.dp); if (m.text.isNotBlank()) Spacer(Modifier.height(4.dp)) }
+            if (m.text.isNotBlank()) Box(Modifier.clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)).background(C.Ink).padding(horizontal = 14.dp, vertical = 10.dp)) {
                 SelectionContainer { Text(m.text, style = T.body.copy(color = C.OnInk)) }
             }
         }
@@ -290,7 +293,7 @@ private fun AiText(vm: MainVm, m: Msg, actions: Boolean) {
     Column(Modifier.fillMaxWidth().padding(end = 24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.hjtk_mark_ink), null, Modifier.size(14.dp)); Spacer(Modifier.width(6.dp))
-            Label(listOfNotNull(m.meta["who"] ?: "DeepSeek", m.meta["via"]?.takeIf { it.isNotBlank() }, m.meta["step"]?.let { "#$it" }).joinToString(" · "))
+            Label(listOfNotNull(m.meta["who"] ?: whoOf(m.meta["via"]), viaOf(m.meta["via"]), m.meta["step"]?.let { "#$it" }).joinToString(" · "))
             Spacer(Modifier.width(8.dp)); Text(hm.format(Date(m.at)), style = T.label)
         }
         Spacer(Modifier.height(4.dp))
@@ -319,6 +322,29 @@ private fun CollabRow(m: Msg) {
             }
             Text(m.text, style = T.small.copy(fontSize = 12.5.sp, color = C.Graphite), maxLines = if (open) 30 else 2, overflow = TextOverflow.Ellipsis)
         }
+    }
+}
+
+/** 작업공간의 사진을 작게 읽어 그린다(메모리: 긴 변 600px 이하로 표본 추출) */
+@Composable
+fun Thumb(path: String, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val bmp = remember(path) {
+        runCatching {
+            val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(path, o)
+            var s = 1; while (maxOf(o.outWidth, o.outHeight) / s > 600) s *= 2
+            android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = s })?.asImageBitmap()
+        }.getOrNull()
+    }
+    if (bmp != null) Image(bmp, null, modifier.heightIn(max = size).clip(RoundedCornerShape(10.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+    else Box(modifier.size(size / 2).clip(RoundedCornerShape(10.dp)).background(C.Paper2), contentAlignment = Alignment.Center) { Label("사진") }
+}
+
+@Composable
+private fun ImageBubble(m: Msg) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+        m.meta["image"]?.let { Thumb(it, 220.dp) }
+        if (m.text.isNotBlank()) { Spacer(Modifier.height(4.dp)); Label(m.text) }
     }
 }
 
@@ -621,6 +647,15 @@ private fun Composer(vm: MainVm, ime: Boolean) {
             }
             Hairline()
         }
+        val pimg by vm.pendingImage.collectAsState()
+        pimg?.let { path ->
+            Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Thumb(path, 64.dp)
+                Spacer(Modifier.width(10.dp))
+                Label(I18n.t("사진을 함께 보내요"), modifier = Modifier.weight(1f))
+                Text("✕", style = T.body, modifier = Modifier.press({ vm.pendingImage.value = null }).padding(8.dp))
+            }
+        }
         if (mode == Mode.MISSION) DifficultyRow(vm)
         // 키보드가 닫혀 있을 때만 모드 칩 줄을 펼친다. 열리면 왼쪽 버튼 하나가 모드 전환을 맡는다(세로 44dp 절약).
         if (!ime) Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -644,11 +679,29 @@ private fun Composer(vm: MainVm, ime: Boolean) {
                     // 하드웨어 키보드(PC·태블릿): Enter 보내기 · Shift+Enter 줄바꿈
                     .onPreviewKeyEvent { e -> if (e.key == androidx.compose.ui.input.key.Key.Enter && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && !e.isShiftPressed && text.isNotBlank()) { vm.send(text); true } else false },
                 decorationBox = { inner -> if (text.isEmpty()) Text(if (mode == Mode.MISSION) "맡길 일을 적어 주세요 — 오래 걸려도 괜찮아요" else "메시지 · / 로 명령어", style = T.body.copy(color = C.Mute), maxLines = 1, overflow = TextOverflow.Ellipsis); inner() })
-            Spacer(Modifier.width(8.dp))
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(if (text.isBlank()) C.Paper3 else if (mode == Mode.MISSION) C.Red else C.Ink)
-                .press({ haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.send(text) }, enabled = text.isNotBlank()), contentAlignment = Alignment.Center) {
-                Ico(I.Send, 20.dp, if (text.isBlank()) C.Mute else C.OnInk)
+            Spacer(Modifier.width(6.dp))
+            val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { u -> u?.let { vm.attachImage(it) } }
+            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).press({ pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }), contentAlignment = Alignment.Center) { Ico(I.Image, 21.dp) }
+            Spacer(Modifier.width(4.dp))
+            val ready = text.isNotBlank() || pimg != null
+            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(if (!ready) C.Paper3 else if (mode == Mode.MISSION) C.Red else C.Ink)
+                .press({ haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.send(text) }, enabled = ready), contentAlignment = Alignment.Center) {
+                Ico(I.Send, 20.dp, if (!ready) C.Mute else C.OnInk)
             }
         }
     }
+}
+
+/** 답의 출처를 사람 말로: 내부 경로 코드(P0_STREAM, API_CLAUDE…)를 그대로 보이지 않는다 */
+internal fun whoOf(via: String?): String = when {
+    via == null -> "DeepSeek"
+    via.startsWith("API_") && via != "API_ERR" -> com.ht.hjtk.core.ai.Provider.values().firstOrNull { it.name == via.removePrefix("API_") }?.label ?: "DeepSeek"
+    else -> "DeepSeek"
+}
+internal fun viaOf(via: String?): String? = when {
+    via.isNullOrBlank() -> null
+    via.startsWith("P0") || via.startsWith("P1") || via.startsWith("P2") -> I18n.t("웹")
+    via.startsWith("API") || via == "L1_API" -> "API"
+    via.startsWith("APP") || via.startsWith("RELAY") -> I18n.t("앱")
+    else -> null
 }

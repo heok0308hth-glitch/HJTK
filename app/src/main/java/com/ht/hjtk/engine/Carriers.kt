@@ -103,6 +103,7 @@ class DeepSeekApi(private val store: Store) : LlmPort {
         val content = runCatching { JSONObject(r.body).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content") }.getOrNull()
             ?: return LlmReply("", "HTTP_${r.code}", false, System.currentTimeMillis() - t0)
         msgs.put(JSONObject().put("role", "assistant").put("content", content))
+        UsageLog.add("DeepSeek API", com.ht.hjtk.core.ai.Tokens.estimate(text), com.ht.hjtk.core.ai.Tokens.estimate(content))
         return LlmReply(content, "L1_API", true, System.currentTimeMillis() - t0)
     }
 }
@@ -134,23 +135,23 @@ class ExternalAiBridge(private val ctx: Context, private val launcher: Launcher)
 
     fun installed(t: Target): Boolean = t.pkg != null && runCatching { ctx.packageManager.getPackageInfo(t.pkg, 0); true }.getOrDefault(false)
 
-    /** 사용자 1탭(백그라운드 액티비티 시작 제한 때문에) → 대상 앱에 프롬프트 전달. 답은 화면읽기·공유·클립보드 중 먼저 온 것. */
-    suspend fun ask(t: Target, prompt: String, useWeb: Boolean, waitMs: Long, jobTag: String): LlmReply {
+    /** 사용자 1탭(백그라운드 액티비티 시작 제한 때문에) → 대상 앱에 프롬프트 전달. 답은 클립보드·공유 중 먼저 온 것. */
+    /** 다른 AI 앱에 보내고 답을 받는다. 사용량은 글자 수로 추정해 기록한다(앱은 토큰을 알려 주지 않는다) */
+    suspend fun ask(t: Target, prompt: String, useWeb: Boolean, waitMs: Long, jobTag: String): LlmReply =
+        askRaw(t, prompt, useWeb, waitMs, jobTag).also { r ->
+            if (r.text.isNotBlank()) UsageLog.add("${t.name} 앱", com.ht.hjtk.core.ai.Tokens.estimate(prompt), com.ht.hjtk.core.ai.Tokens.estimate(r.text))
+        }
+
+    private suspend fun askRaw(t: Target, prompt: String, useWeb: Boolean, waitMs: Long, jobTag: String): LlmReply {
         val t0 = System.currentTimeMillis()
         Clip.copy(ctx, prompt, sensitive = false)
         val intent = if (!useWeb && installed(t)) Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"; putExtra(Intent.EXTRA_TEXT, prompt); setPackage(t.pkg); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         } else Intent(Intent.ACTION_VIEW, Uri.parse(t.webUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (t.pkg != null) A11yBridge.arm(t.pkg, prompt)
         RelayInbox.awaiting = prompt
         launcher.launch(intent, "${t.name}에게 보내기", "${t.name}에 질문을 넣었어요(클립보드에도 복사). 답이 나오면 '복사'하고 HJTK로 돌아오세요 — 자동으로 받아요.", customTab = useWeb || !installed(t))
-        val got = withTimeoutOrNull(waitMs) {
-            kotlinx.coroutines.flow.merge(
-                RelayInbox.flow,
-                A11yBridge.answers.filter { it.pkg == t.pkg }.map { RelayInbox.Item(it.text, "L3_A11Y") }
-            ).first()
-        }
-        A11yBridge.disarm()
+        // 답은 '복사하고 돌아오기'(클립보드 자동 수신) 또는 '공유 → HJTK' 중 먼저 온 것
+        val got = withTimeoutOrNull(waitMs) { RelayInbox.flow.first() }
         RelayInbox.awaiting = null
         return if (got == null) LlmReply("", "TIMEOUT", false, System.currentTimeMillis() - t0)
         else LlmReply(got.text, got.source, true, System.currentTimeMillis() - t0)

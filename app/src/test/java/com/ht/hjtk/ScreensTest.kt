@@ -112,4 +112,31 @@ class ScreensTest {
     @Test fun s24_wide() { shot("24_wide") { HjtkApp(vm) } }
     @Test fun s25_english() { vm.store.updateSettings { it.copy(lang = "en") }; vm.go(Route.Hub); shot("25_english_hub") { HjtkApp(vm) } }
     @Test fun s12_cockpit() { vm.go(Route.Cockpit); shot("12_cockpit") { HjtkApp(vm) } }
+
+    // 2.1 — 루틴 · 사용량 · 사진 첨부
+    @Test fun s26_routinesEmpty() { com.ht.hjtk.engine.Routines.list.value = emptyList(); vm.go(Route.Routines); shot("26_routines_empty") { HjtkApp(vm) } }
+    @Test fun s27_routines() {
+        com.ht.hjtk.engine.Routines.list.value = listOf(
+            com.ht.hjtk.engine.Routine("r1", "아침 브리핑", "오늘 일정과 날씨, 안 읽은 중요한 메일을 한 화면으로 정리해 줘.", "daily", 1, 8, 0, convId = "x"),
+            com.ht.hjtk.engine.Routine("r2", "하루 마무리", "끝난 일과 남은 일을 나눠 정리해 줘.", "weekdays", 1, 18, 30),
+            com.ht.hjtk.engine.Routine("r3", "주간 계획", "이번 주 계획을 세워 줘.", "weekly", 1, 9, 0, enabled = false))
+        vm.go(Route.Routines); shot("27_routines") { HjtkApp(vm) }
+    }
+    @Test fun s28_usage() {
+        repeat(6) { com.ht.hjtk.engine.UsageLog.add("DeepSeek", 1800, 2400) }
+        repeat(3) { com.ht.hjtk.engine.UsageLog.add("Claude Sonnet 5.5", 3100, 1900) }
+        com.ht.hjtk.engine.UsageLog.add("Gemini 3.8 Flash", 2200, 700); com.ht.hjtk.engine.UsageLog.add("ChatGPT 앱", 900, 1400)
+        vm.go(Route.Usage); shot("28_usage") { HjtkApp(vm) }
+    }
+    @Test fun s29_imageChat() {
+        val f = java.io.File(vm.h.store.workspace, "images/test.jpg").apply { parentFile?.mkdirs() }
+        val bmp = android.graphics.Bitmap.createBitmap(640, 420, android.graphics.Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(bmp).apply { drawColor(0xFFE9E6DF.toInt()); drawRect(60f, 60f, 580f, 140f, android.graphics.Paint().apply { color = 0xFF16161A.toInt() }); drawRect(60f, 180f, 380f, 210f, android.graphics.Paint().apply { color = 0xFF8A8A8A.toInt() }); drawRect(60f, 300f, 240f, 360f, android.graphics.Paint().apply { color = 0xFFD8432B.toInt() }) }
+        f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+        val c = vm.h.store.newConversation("사진 질문"); vm.convId.value = c.id
+        vm.h.store.msg(c.id, Role.USER, "이 화면에서 버튼 배치 어때?", meta = mapOf("image" to f.absolutePath))
+        vm.h.store.msg(c.id, Role.AI, "제목 바가 화면 폭을 거의 다 차지해서 시선이 거기서 멈춰요. 빨간 버튼은 왼쪽 아래에 있어 엄지가 닿기 어렵습니다. 오른쪽 아래로 옮기고 크기를 1.5배로 키우는 걸 권해요.", meta = mapOf("via" to "API_CLAUDE"))
+        vm.pendingImage.value = f.absolutePath
+        shot("29_image_chat") { HjtkApp(vm) }
+    }
 }

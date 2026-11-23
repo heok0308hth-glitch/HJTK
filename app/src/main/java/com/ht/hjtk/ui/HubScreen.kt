@@ -32,7 +32,6 @@ import com.ht.hjtk.data.HubApp
 import com.ht.hjtk.data.MailAccount
 import com.ht.hjtk.data.PinnedFile
 import com.ht.hjtk.data.Site
-import com.ht.hjtk.engine.A11yBridge
 import com.ht.hjtk.engine.DeepSeekWeb
 import com.ht.hjtk.engine.ExternalAiBridge
 import com.ht.hjtk.engine.Perms
@@ -82,14 +81,15 @@ fun HubScreen(vm: MainVm) {
             Connector(I18n.t("AI 전화"), vm.h.phone.available()?.let { "$it · AI가 대신 통화" } ?: "대본 받고 직접 걸기 · 계정 연결 시 AI가 통화", if (vm.h.phone.available() != null) 2 else 0, I.Bell) { vm.go(Route.Phone) },
             Connector(I18n.t("실시간 음성 대화"), "말로 묻고 듣기 · 손을 떼도 이어서", 2, I.Chat) { vm.go(Route.Live) },
             Connector(I18n.t("PC에서 쓰기"), "같은 와이파이의 PC 브라우저로 HJTK 열기", 0, I.Globe) { vm.go(Route.Pc) },
+            Connector(I18n.t("루틴"), com.ht.hjtk.engine.Routines.list.value.let { l -> if (l.isEmpty()) "정해 둔 시각에 AI가 알아서 일하기" else l.filter { it.enabled }.joinToString(" · ") { it.title }.ifBlank { "모두 꺼짐" } }, if (com.ht.hjtk.engine.Routines.list.value.any { it.enabled }) 2 else 0, I.Cal) { vm.go(Route.Routines) },
+            Connector(I18n.t("사용량"), "AI별 토큰 · 최근 7일", 2, I.Eye) { vm.go(Route.Usage) },
             Connector("Gmail", mails.firstOrNull { it.provider == "gmail" }?.email ?: "앱 비밀번호로 연결", if (mails.any { it.provider == "gmail" }) 2 else 0, I.Mail) { vm.go(Route.MailAdd) },
             Connector(I18n.t("네이버 메일"), mails.firstOrNull { it.provider == "naver" }?.email ?: "IMAP·SMTP", if (mails.any { it.provider == "naver" }) 2 else 0, I.Mail) { vm.go(Route.MailAdd) },
             Connector(I18n.t("구글 캘린더"), if (cal) "기기 동기화로 읽기·쓰기" else "권한 한 번", if (cal) 2 else 1, I.Cal) { permLauncher.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) },
             Connector(I18n.t("연락처"), if (con) "받는 사람 확인" else "권한 한 번", if (con) 2 else 0, I.Chat) { permLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS)) },
             Connector(I18n.t("구글 드라이브·파일"), "${files.size}개 고정 · 시스템 선택기", if (files.isNotEmpty()) 2 else 0, I.File) { docPicker.launch(arrayOf("*/*")) },
             Connector(I18n.t("네이버 검색"), if (st.secrets.has("naver_id")) "공식 API 키" else "키 없이 웹 결과", 2, I.Search) { vm.go(Route.Settings) },
-            if (com.ht.hjtk.engine.Caps.a11y) Connector(I18n.t("화면 읽기"), if (A11yBridge.bound()) "Gemini 답 자동 회수" else if (A11yBridge.enabled(ctx)) "켜졌지만 미연결 · 제한된 설정?" else "선택 · full 빌드", if (A11yBridge.bound()) 2 else if (A11yBridge.enabled(ctx)) 1 else 0, I.Eye) { ctx.startActivity(Perms.a11yIntent()) }
-            else Connector(I18n.t("공유로 답 받기"), "Gemini 답 → 공유 → HJTK", 2, I.Export) { vm.go(Route.Settings) },
+            Connector(I18n.t("공유로 답 받기"), "다른 AI 앱 답을 복사하고 돌아오면 자동 수신", 2, I.Export) { vm.go(Route.Settings) },
             Connector(I18n.t("백그라운드 유지"), if (Perms.overlay(ctx)) "앱을 나가도 DeepSeek 창이 살아 있어요" else "허용하면 앱 밖에서도 작업이 끊기지 않아요(선택)", if (Perms.overlay(ctx)) 2 else 1, I.Eye) { ctx.startActivity(Perms.overlayIntent(ctx)) }
         )
         Column(Modifier.fillMaxSize()) {

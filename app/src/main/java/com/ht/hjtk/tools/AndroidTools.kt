@@ -41,7 +41,6 @@ import com.ht.hjtk.core.command.CommandSpec
 import com.ht.hjtk.core.command.Num
 import com.ht.hjtk.core.command.PureHandlers
 import com.ht.hjtk.data.Role
-import com.ht.hjtk.engine.A11yBridge
 import com.ht.hjtk.engine.AppVisibility
 import com.ht.hjtk.engine.Clip
 import com.ht.hjtk.engine.ExternalAiBridge
@@ -337,7 +336,7 @@ class AndroidTools(
         put("hub.commands") { _ -> ok(store.customs.value.joinToString("\n") { "${it.trigger} → ${it.expandsTo}" }.ifBlank { "없음" }) }
         put("hub.ai") { _ ->
             val s = store.settings.value
-            ok("DeepSeek: 모드 ${s.dsMode} · 상태 ${h.deepseek.status.value} · 최근 경로 ${h.deepseek.lastVia.value.ifBlank { "-" }}\nGemini: 모드 ${s.geminiMode} · 앱 ${if (h.bridge.installed(ExternalAiBridge.GEMINI)) "설치됨" else "없음"} · API 키 ${if (h.gemini.available()) "있음" else "없음"}\n화면읽기(L3): ${if (A11yBridge.bound()) "활성" else "꺼짐"}")
+            ok("DeepSeek: 모드 ${s.dsMode} · 상태 ${h.deepseek.status.value} · 최근 경로 ${h.deepseek.lastVia.value.ifBlank { "-" }}\nGemini: 모드 ${s.geminiMode} · 앱 ${if (h.bridge.installed(ExternalAiBridge.GEMINI)) "설치됨" else "없음"} · API 키 ${if (h.gemini.available()) "있음" else "없음"}\n그림 읽기: ${h.ai.visionAssignment()?.name ?: "볼 수 있는 AI 없음(Claude·GPT·Gemini 키 필요)"}")
         }
         put("hub.workspace") { _ -> ok(store.workspace.listFiles()?.filter { it.isDirectory }?.joinToString("\n") { d -> "${d.name}/ " + (d.listFiles()?.joinToString(", ") { it.name } ?: "") } ?: "비어 있음") }
 
@@ -359,13 +358,7 @@ class AndroidTools(
         }
 
         // ── 화면·사용자 ─────────────────────────────────────────
-        put("ui.read_screen") { c ->
-            if (!A11yBridge.bound()) return@put fail(if (com.ht.hjtk.engine.Caps.a11y) "화면 읽기(접근성)가 꺼져 있다. ui.ask_screen으로 사용자에게 화면을 보여달라고 하라." else "이 빌드에는 화면 읽기가 없다. task.ask로 사용자에게 화면 내용을 글로 물어보라.")
-            val ok = human.ask(jobId, "AI가 지금 화면의 글자를 읽으려 해요.\n이유: ${c.arg("reason")}", listOf("읽어도 돼", "안 돼"))
-            if (ok != "읽어도 돼") return@put fail("사용자가 화면 읽기를 거절함")
-            val s = A11yBridge.readScreen(false) ?: return@put fail("화면을 읽지 못함")
-            ok("앱: ${s.pkg}\n${s.text}")
-        }
+        put("ui.read_screen") { c -> h.runner.requestScreen(jobId, c.arg("reason"))?.let { ok(it) } ?: fail("사용자가 화면을 보내지 않았다") }
         put("ui.ask_screen") { c -> h.runner.requestScreen(jobId, c.arg("reason"))?.let { ok(it) } ?: fail("사용자가 화면을 보내지 않았다") }
         put("ui.show") { c -> store.msg(convId, Role.AI, c.arg("body"), "card", mapOf("title" to c.arg("title"), "job" to jobId)); ok("카드 표시") }
         put("ui.toast") { c ->

@@ -12,8 +12,8 @@ android {
         applicationId = "com.ht.hjtk"
         minSdk = 28
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.0.0"
+        versionCode = 7
+        versionName = "2.1.0"
     }
 
     signingConfigs {
@@ -30,18 +30,13 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: 쓰지 않는 코드·리소스를 걷어내 설치 크기와 첫 실행 시간을 줄인다(규칙은 proguard-rules.pro)
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             val ks = rootProject.file("keystore/hjtk-release.jks")
             if (ks.exists()) signingConfig = signingConfigs.getByName("release")
         }
-    }
-
-    // standard: Play 프로텍트 EFP(접근성 등 민감 권한 사이드로드 차단)에 걸리지 않는 기본 빌드
-    // full: 화면 읽기(접근성) 포함 — 설치 시 Play 프로텍트 검사를 잠시 꺼야 함
-    flavorDimensions += "dist"
-    productFlavors {
-        create("standard") { dimension = "dist" }
-        create("full") { dimension = "dist"; versionNameSuffix = "-full" }
     }
 
     buildFeatures { compose = true; buildConfig = true }

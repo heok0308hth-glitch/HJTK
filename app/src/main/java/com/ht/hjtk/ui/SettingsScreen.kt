@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.sp
 import com.ht.hjtk.BuildConfig
 import com.ht.hjtk.R
 import com.ht.hjtk.core.command.CommandCatalog
-import com.ht.hjtk.engine.A11yBridge
 import com.ht.hjtk.engine.DeepSeekWeb
 import com.ht.hjtk.engine.ExternalAiBridge
 import com.ht.hjtk.engine.Perms
@@ -59,6 +58,11 @@ fun SettingsScreen(vm: MainVm) {
     var tick by remember { mutableStateOf(0) }
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { tick++ }
     var dsKey by remember { mutableStateOf("") }; var gKey by remember { mutableStateOf("") }; var nId by remember { mutableStateOf("") }; var nSec by remember { mutableStateOf("") }
+    var backupMsg by remember { mutableStateOf<String?>(null) }
+    val backupOut = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { u -> if (u != null) backupMsg = com.ht.hjtk.engine.Backup.export(ctx, u) }
+    val backupIn = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+        if (u != null) { val m = com.ht.hjtk.engine.Backup.restore(ctx, u); backupMsg = m; if (!m.startsWith("복원 실패")) com.ht.hjtk.engine.Backup.restart(ctx) }
+    }
     var name by remember { mutableStateOf(s.userName) }; var city by remember { mutableStateOf(s.homeCity) }
     key(tick) {
     Column(Modifier.fillMaxSize()) {
@@ -70,7 +74,7 @@ fun SettingsScreen(vm: MainVm) {
             Segmented(listOf("web" to "내장 웹(권장)", "app" to "DeepSeek 앱", "api" to "API 키"), s.dsMode) { m -> vm.store.updateSettings { it.copy(dsMode = m) } }
             Text(when (s.dsMode) {
                 "web" -> "앱 안의 DeepSeek 화면에 한 번 로그인하면, 키 없이 답 전문을 스트림에서 직접 읽습니다. 가장 자동적인 경로."
-                "app" -> "설치된 DeepSeek 앱으로 보냅니다. 답은 화면 읽기(접근성) 또는 '공유 → HJTK'로 돌아옵니다. 단계마다 사람 손이 들 수 있어요."
+                "app" -> "설치된 DeepSeek 앱으로 보냅니다. 답을 복사하고 HJTK로 돌아오면 자동으로 받아요('공유 → HJTK'도 돼요). 단계마다 사람 손이 들 수 있어요."
                 else -> "DeepSeek Platform 키가 있을 때만 동작합니다(선택). 가장 빠르고 안정적이지만 필수가 아닙니다."
             }, style = T.small.copy(fontSize = 12.5.sp), modifier = Modifier.padding(top = 6.dp))
             NumRow(1, I18n.t("조종석 — DeepSeek 화면"), when (ds) { DeepSeekWeb.Status.READY -> "로그인됨"; DeepSeekWeb.Status.LOGIN -> "로그인이 필요해요"; DeepSeekWeb.Status.CHALLENGE -> "확인이 필요해요"; else -> "열어서 확인" },
@@ -93,7 +97,7 @@ fun SettingsScreen(vm: MainVm) {
             Spacer(Modifier.height(14.dp)); Label(I18n.t("Gemini · 검토자(교차 검증)"))
             Spacer(Modifier.height(6.dp))
             Segmented(listOf("app" to "Gemini 앱", "web" to "웹(브라우저)", "api" to "API 키"), s.geminiMode) { m -> vm.store.updateSettings { it.copy(geminiMode = m) } }
-            Text(I18n.t("Google 정책상 앱 안 화면(WebView)에서는 Gemini에 로그인할 수 없어요. 그래서 Gemini는 앱·브라우저로 보내고, 답은 화면 읽기 또는 '공유 → HJTK' 1탭으로 받습니다. 작업당 최대 2번까지만 사람을 부릅니다.") +
+            Text(I18n.t("Google 정책상 앱 안 화면(WebView)에서는 Gemini에 로그인할 수 없어요. 그래서 Gemini는 앱·브라우저로 보내고, 답은 복사 후 돌아오면 자동으로(또는 '공유 → HJTK' 1탭으로) 받습니다. 작업당 최대 2번까지만 사람을 부릅니다.") +
                 (if (vm.h.bridge.installed(ExternalAiBridge.GEMINI)) "" else "\n(Gemini 앱이 설치되어 있지 않아요)"), style = T.small.copy(fontSize = 12.5.sp), modifier = Modifier.padding(top = 6.dp))
             Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(I18n.t("Gemini 답 기다리는 시간"), style = T.body, modifier = Modifier.weight(1f))
@@ -111,15 +115,11 @@ fun SettingsScreen(vm: MainVm) {
             var n = 1
             PermRow(n++, I18n.t("알림"), "5분 보고·허락 요청", Build.VERSION.SDK_INT < 33 || Perms.granted(ctx, Manifest.permission.POST_NOTIFICATIONS)) { if (Build.VERSION.SDK_INT >= 33) perm.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) }; Hairline()
             PermRow(n++, I18n.t("다른 앱 위에 표시"), "백그라운드에서 DeepSeek 화면 유지", Perms.overlay(ctx)) { ctx.startActivity(Perms.overlayIntent(ctx)) }; Hairline()
-            if (com.ht.hjtk.engine.Caps.a11y) {
-            PermRow(n++, I18n.t("화면 읽기(접근성)"), if (A11yBridge.enabled(ctx) && !A11yBridge.bound()) "켜졌는데 연결 안 됨 → 앱 정보 ⋮ '제한된 설정 허용'" else "Gemini 답 자동 회수 · 화면 공유", A11yBridge.bound(), optional = true) {
-                ctx.startActivity(if (A11yBridge.enabled(ctx) && !A11yBridge.bound()) Perms.appInfo(ctx) else Perms.a11yIntent()) }; Hairline()
-            } else { NumRow(n++, I18n.t("화면 읽기(접근성)"), "이 빌드(standard)에는 없어요. Gemini 답은 '공유 → HJTK' 1탭으로 받습니다. 필요하면 full 빌드를 설치하세요.", trailing = "없음", dot = C.Hair); Hairline() }
             PermRow(n++, I18n.t("캘린더"), "구글 캘린더(기기 동기화) 읽기·쓰기", Perms.granted(ctx, Manifest.permission.READ_CALENDAR), optional = true) { perm.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) }; Hairline()
             PermRow(n++, I18n.t("연락처"), "받는 사람 찾기·처음 보내는 주소 판별", Perms.granted(ctx, Manifest.permission.READ_CONTACTS), optional = true) { perm.launch(arrayOf(Manifest.permission.READ_CONTACTS)) }; Hairline()
             PermRow(n++, I18n.t("배터리 최적화 제외"), "긴 작업이 덜 끊겨요(삼성은 '잠자는 앱'도 확인)", Perms.ignoringBattery(ctx), optional = true) { runCatching { ctx.startActivity(Perms.batteryIntent(ctx)) } }
 
-            SectionHead("05", I18n.t("허락 규칙"))
+            SectionHead("04", I18n.t("허락 규칙"))
             Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(I18n.t("아는 사람에게 보내는 것은 자동 허용"), style = T.head.copy(fontSize = 15.sp))
@@ -132,17 +132,20 @@ fun SettingsScreen(vm: MainVm) {
                 Toggle(s.defaultMission) { vm.store.updateSettings { it.copy(defaultMission = !it.defaultMission) } }
             }
 
-            SectionHead("06", I18n.t("나"))
+            SectionHead("05", I18n.t("나"))
             Spacer(Modifier.height(10.dp))
             Field(name, { name = it }, "이름 (보고서·결과물에 사용)"); Spacer(Modifier.height(8.dp))
             Field(city, { city = it }, "사는 곳 (날씨·장소 기본값)"); Spacer(Modifier.height(8.dp))
             GhostButton(I18n.t("저장")) { vm.store.updateSettings { it.copy(userName = name, homeCity = city.ifBlank { "서울" }) } }
 
-            SectionHead("07", I18n.t("데이터"))
+            SectionHead("06", I18n.t("데이터"))
             NumRow(1, I18n.t("기억 관리"), "${vm.store.memories.value.size}개", onClick = { vm.go(Route.Memory) }); Hairline()
-            NumRow(2, I18n.t("대화 목록 · 내보내기(MD/HTML/JSON)"), "API 키·토큰·경로는 기본으로 가려서 내보냅니다", onClick = { vm.go(Route.Conversations) })
+            NumRow(2, I18n.t("대화 목록 · 내보내기(MD/HTML/JSON)"), "API 키·토큰·경로는 기본으로 가려서 내보냅니다", onClick = { vm.go(Route.Conversations) }); Hairline()
+            NumRow(3, I18n.t("사용량"), "AI별 토큰 · 최근 7일", onClick = { vm.go(Route.Usage) }); Hairline()
+            NumRow(4, I18n.t("백업 파일 만들기"), backupMsg ?: "대화·작업·기억·루틴·설정을 zip 하나로 · 키와 비밀번호는 빼고", onClick = { backupOut.launch("HJTK-backup-${java.time.LocalDate.now()}.zip") }); Hairline()
+            NumRow(5, I18n.t("백업에서 복원"), "지금 데이터를 덮어쓰고 앱을 다시 시작해요", onClick = { backupIn.launch(arrayOf("application/zip", "application/octet-stream")) })
 
-            SectionHead("08", I18n.t("원칙"))
+            SectionHead("07", I18n.t("원칙"))
             Text("1. 앱 안에 AI 모델이 없습니다. 이해는 DeepSeek·Gemini가, 실행은 명령어가 합니다.\n2. 밖으로 나가는 일은 '실행' 버튼으로 허락받습니다. 승인은 화면에 보인 그 행동에만 묶입니다.\n3. 못 지킨 것을 숨기지 않습니다. 늦은 보고는 늦었다고, 비평을 못 했으면 못 했다고 씁니다.\n4. 모든 데이터는 이 기기 안에만 있습니다.",
                 style = T.small.copy(color = C.Ink2), modifier = Modifier.padding(vertical = 10.dp))
             Spacer(Modifier.height(16.dp)); Label("HJTK · Don't make tool, make innovation")

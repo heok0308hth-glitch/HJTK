@@ -38,7 +38,7 @@ class Hjtk(val app: Context) {
     val reader = com.ht.hjtk.engine.PageReader(app)
     val phone by lazy { com.ht.hjtk.engine.PhoneAgent(app, store, connectors, launcher) }
     val pc by lazy { com.ht.hjtk.engine.PcServer(this) }
-    val connectorHandlers by lazy { connectors.handlers(reader, ai) + phone.handlers }
+    val connectorHandlers by lazy { connectors.handlers(reader, ai) + phone.handlers + com.ht.hjtk.engine.Routines.handlers(app) }
     /** 대화용 두 번째 DeepSeek 창(작업이 주 창을 쓰는 동안만 만든다. 로그인 쿠키는 공유) */
     val deepseekChat by lazy { DeepSeekWeb(app) }
     val deepseekApp = DeepSeekAppPort(bridge, store)
@@ -55,6 +55,9 @@ class HjtkApp : Application() {
         super.onCreate()
         com.ht.hjtk.engine.CrashLog.install(this)
         com.ht.hjtk.engine.Thermal.install(this)
+        com.ht.hjtk.engine.UsageLog.install(this)
+        com.ht.hjtk.engine.Routines.install(this)
+        com.ht.hjtk.engine.Routines.rescheduleAll(this)
         Notifier.channels(this)
         AppVisibility.install()
         val h = Hjtk.get(this)
@@ -87,6 +90,7 @@ class BootReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val n = Hjtk.get(context).store.jobs.value.count { it.state == "SUSPENDED" || it.running }
         if (n > 0) Notifier.simple(context, "재개 대기 중인 작업 ${n}개", "HJTK를 열면 이어서 진행할 수 있어요")
+        com.ht.hjtk.engine.Routines.rescheduleAll(context)   // 재부팅 뒤에도 루틴이 이어진다
     }
 }
 
@@ -104,9 +108,11 @@ class ShareActivity : ComponentActivity() {
                     if (RelayInbox.flow.subscriptionCount.value > 0) RelayInbox.submit(t, "L7_SHARE")
                     else startActivity(Intent(this, MainActivity::class.java).putExtra("shared", t).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 } else (intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))?.let { uri ->
-                    val f = java.io.File(h.store.workspace, "shared/shot_${System.currentTimeMillis()}.png").apply { parentFile?.mkdirs() }
+                    val f = java.io.File(h.store.workspace, "shared/shot_${System.currentTimeMillis()}.img").apply { parentFile?.mkdirs() }
                     runCatching { contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { i.copyTo(it) } } }
-                    h.runner.fulfillScreen("사용자가 스크린샷을 공유했다(${f.name}). HJTK는 이미지 속 글자를 읽지 않는다(온디바이스 AI 없음). 필요한 내용은 task.ask로 사용자에게 물어보라.")
+                    // 작업이 화면을 기다리면 그 작업으로, 아니면 새 대화의 입력창에 사진으로 붙인다
+                    if (h.runner.screenWaiting.value != null) h.runner.fulfillScreen(shot = f)
+                    else startActivity(Intent(this, MainActivity::class.java).putExtra("sharedImage", f.absolutePath).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             }
         }

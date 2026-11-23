@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="new" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/sc_new" android:shortcutLongLabel="@string/sc_new">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.ht.hjtk" android:targetClass="com.ht.hjtk.MainActivity"><extra android:name="route" android:value="new" /></intent>
+    </shortcut>
+    <shortcut android:shortcutId="task" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/sc_task" android:shortcutLongLabel="@string/sc_task">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.ht.hjtk" android:targetClass="com.ht.hjtk.MainActivity"><extra android:name="route" android:value="task" /></intent>
+    </shortcut>
+    <shortcut android:shortcutId="live" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/sc_live" android:shortcutLongLabel="@string/sc_live">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.ht.hjtk" android:targetClass="com.ht.hjtk.MainActivity"><extra android:name="route" android:value="live" /></intent>
+    </shortcut>
+    <shortcut android:shortcutId="pc" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/sc_pc" android:shortcutLongLabel="@string/sc_pc">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.ht.hjtk" android:targetClass="com.ht.hjtk.MainActivity"><extra android:name="route" android:value="pc" /></intent>
+    </shortcut>
+</shortcuts>

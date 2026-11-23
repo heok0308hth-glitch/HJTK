@@ -42,6 +42,8 @@ sealed interface Route {
     data object Phone : Route
     data object Live : Route
     data object Pc : Route
+    data object Routines : Route
+    data object Usage : Route
 }
 
 enum class Mode(val label: String) { AUTO("자동"), QUICK("대화"), MISSION("작업 맡기기") }
@@ -65,12 +67,21 @@ class MainVm(val h: Hjtk) {
     fun newChat() { val c = store.newConversation(); convId.value = c.id; tab(Route.Chat) }
 
     val pickerOpen = MutableStateFlow(false)
+    /** 입력창에 붙인 사진(경로) — 보내면 비운다 */
+    val pendingImage = MutableStateFlow<String?>(null)
     val difficulty = MutableStateFlow(h.ai.state.value.difficulty)
 
     fun send(text0: String) {
-        val text = text0.trim(); if (text.isEmpty()) return
+        val text = text0.trim()
+        val img = pendingImage.value
+        if (text.isEmpty() && img == null) return
         draft.value = ""
         val cid = convId.value
+        if (img != null) {
+            pendingImage.value = null
+            store.msg(cid, Role.USER, text, meta = mapOf("image" to img))
+            runner.quickAsk(cid, text, img); return
+        }
         val forced = when (mode.value) { Mode.AUTO -> null; Mode.QUICK -> false; Mode.MISSION -> true }
         when (val r = InputRouter.route(text, store.customs.value, forced)) {
             is InputRouter.Route.Direct -> { store.msg(cid, Role.USER, text); runner.runDirect(cid, r.call) }
@@ -89,6 +100,22 @@ class MainVm(val h: Hjtk) {
     }
 
     /** 오류 카드의 '다시 보내기': 마지막 질문을 같은 대화에 다시 보낸다(사용자 말풍선은 중복으로 만들지 않는다) */
+    /** 사진 첨부: 고른 사진을 작업공간에 줄여서 복사(긴 변 1280 · JPEG) → 토큰·전송량 절약 */
+    fun attachImage(uri: android.net.Uri) {
+        runCatching {
+            val ctx = h.app
+            val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) }
+            var sample = 1; while (maxOf(opts.outWidth, opts.outHeight) / sample > 2560) sample *= 2
+            val bmp = ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) } ?: return
+            val sc = 1280f / maxOf(bmp.width, bmp.height)
+            val out = if (sc < 1f) android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * sc).toInt(), (bmp.height * sc).toInt(), true) else bmp
+            val f = java.io.File(java.io.File(ctx.filesDir, "workspace/images").apply { mkdirs() }, "img_${System.currentTimeMillis()}.jpg")
+            f.outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+            pendingImage.value = f.absolutePath
+        }
+    }
+
     fun retryLast() {
         val cid = convId.value
         if (cid in runner.busyQuick.value) return

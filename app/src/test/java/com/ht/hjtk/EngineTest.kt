@@ -82,4 +82,17 @@ class EngineTest {
         assertEquals(4, c.messages.value[oldest.id]!!.size)
         assertNull(c.messages.value["없는 대화"])
     }
+
+    @Test fun routineNextRespectsRepeat() {
+        val mon8 = java.time.LocalDateTime.of(2026, 11, 23, 8, 0)   // 월요일 08:00
+        val daily = com.ht.hjtk.engine.Routine("a", "t", "g", "daily", 1, 8, 0)
+        assertEquals(java.time.LocalDateTime.of(2026, 11, 24, 8, 0), daily.next(mon8))           // 같은 시각이면 내일
+        val wd = com.ht.hjtk.engine.Routine("b", "t", "g", "weekdays", 1, 9, 0)
+        assertEquals(java.time.LocalDateTime.of(2026, 11, 30, 9, 0), wd.next(java.time.LocalDateTime.of(2026, 11, 28, 10, 0)))  // 토 → 월
+        val wk = com.ht.hjtk.engine.Routine("c", "t", "g", "weekly", 5, 7, 30)                     // 금요일
+        assertEquals(java.time.LocalDateTime.of(2026, 11, 27, 7, 30), wk.next(mon8))
+        assertEquals("평일 09:00", wd.label())
+        val back = com.ht.hjtk.engine.Routine.from(wk.toJson())
+        assertEquals(wk, back)
+    }
 }

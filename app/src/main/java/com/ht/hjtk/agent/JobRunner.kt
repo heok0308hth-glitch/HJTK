@@ -14,7 +14,6 @@ import com.ht.hjtk.core.agent.*
 import com.ht.hjtk.core.command.CommandCall
 import com.ht.hjtk.data.JobRec
 import com.ht.hjtk.data.Role
-import com.ht.hjtk.engine.A11yBridge
 import com.ht.hjtk.engine.CrashLog
 import com.ht.hjtk.engine.DeepSeekWeb
 import com.ht.hjtk.engine.ExternalAiBridge
@@ -362,7 +361,9 @@ class JobRunner(private val h: Hjtk) {
                 "effect" to "E${req.spec.effect.level} ${req.spec.effect.label}", "warn" to (req.warning ?: ""), "digest" to req.digest.take(12), "status" to "pending"))
             val d = CompletableDeferred<String?>()
             pending.update { it + (pid to Pending(pid, req.jobId, conv, "approval", m.id, d, req)) }
-            Notifier.need(h.app, pid, "허락이 필요해요 · ${req.spec.title}", req.summary)
+            // 알림에서 바로 '실행'·'거절'(돈이 드는 일·삭제는 앱에서 내용을 보고 누르도록 알림 버튼을 달지 않는다)
+            val acts = if (req.spec.effect.level <= 2) listOf(com.ht.hjtk.engine.QuickActions.approve(h.app, pid, true), com.ht.hjtk.engine.QuickActions.approve(h.app, pid, false)) else emptyList()
+            Notifier.need(h.app, pid, "허락이 필요해요 · ${req.spec.title}", req.summary, actions = acts)
             val ans = withTimeoutOrNull(60 * 60_000L) { d.await() }
             pending.update { it - pid }; Notifier.cancel(h.app, pid)
             return if (ans == "approve") ApprovalAnswer.Approved(gate.issue(req.digest, System.currentTimeMillis()))
@@ -375,7 +376,7 @@ class JobRunner(private val h: Hjtk) {
             val m = store.msg(conv, Role.AI, question, "ask", mapOf("pid" to pid, "job" to jobId, "choices" to choices.joinToString("|"), "status" to "pending"))
             val d = CompletableDeferred<String?>()
             pending.update { it + (pid to Pending(pid, jobId, conv, "ask", m.id, d)) }
-            Notifier.need(h.app, pid, "질문이 있어요", question)
+            Notifier.need(h.app, pid, "질문이 있어요", question, actions = listOf(com.ht.hjtk.engine.QuickActions.reply(h.app, pid)))
             val a = withTimeoutOrNull(45 * 60_000L) { d.await() }
             pending.update { it - pid }; Notifier.cancel(h.app, pid)
             store.updateMsg(conv, m.id) { it.copy(meta = it.meta + ("status" to "answered") + ("answer" to (a ?: "(응답 없음)"))) }
@@ -404,22 +405,32 @@ class JobRunner(private val h: Hjtk) {
         val conv = store.job(jobId)?.convId
         conv?.let { store.msg(it, Role.AI, "도움이 필요한 화면을 띄운 뒤, 알림의 '이 화면 보내기'를 눌러 주세요.\n이유: $reason", "screen", mapOf("job" to jobId)) }
         val d = CompletableDeferred<String?>(); screenDeferred = d; screenWaiting.value = reason
-        Notifier.need(h.app, "screen", "화면을 보여 주세요", "$reason\n도움이 필요한 화면을 띄우고 이 알림을 누르세요.", ScreenShare.pendingIntent(h.app))
+        // 찍힌 결과를 기다린다(허락 → 한 장 → 끝)
+        val watcher = scope.launch { com.ht.hjtk.engine.ScreenCapture.results.collect { f -> fulfillScreen(shot = f); if (f == null) fulfillScreen() } }
+        Notifier.need(h.app, "screen", "화면을 보여 주세요", "$reason\n도움이 필요한 화면을 띄우고 이 알림을 누르세요. 허락하면 지금 화면 한 장만 찍어요.", ScreenShare.pendingIntent(h.app))
         val r = withTimeoutOrNull(20 * 60_000L) { d.await() }
+        watcher.cancel()
         screenWaiting.value = null; screenDeferred = null
         return r
     }
 
-    /** 알림 버튼·이미지 공유에서 호출 */
-    fun fulfillScreen(extraText: String? = null) {
+    /**
+     * 화면 공유 결과(찍은 한 장). 그림을 볼 수 있는 AI가 있으면 그 AI가 화면을 글로 옮기고, 없으면 사실대로 알린다.
+     * 이미지 공유(다른 앱에서 'HJTK로 공유')로 들어온 그림도 같은 길로 들어온다.
+     */
+    fun fulfillScreen(extraText: String? = null, shot: java.io.File? = null) {
         val d = screenDeferred ?: return
         scope.launch {
-            delay(500)
-            val s = A11yBridge.readScreen(withShot = true)
+            val f = shot
+            val reason = screenWaiting.value.orEmpty()
+            val conv = live.values.firstOrNull()?.convId
+            if (f != null && conv != null) store.msg(conv, Role.USER, "화면을 보냈어요", "image", mapOf("image" to f.absolutePath))
             val text = when {
-                s != null -> "사용자가 보낸 화면(앱 ${s.pkg})의 글자:\n${s.text.take(9000)}" + (s.shot?.let { "\n스크린샷 저장: ${it.name}" } ?: "")
+                f != null -> h.ai.see(listOf(f), "사용자가 도움을 요청한 휴대폰 화면이다. 이유: $reason\n화면에 보이는 앱, 글자, 버튼, 오류 메시지, 현재 상태를 빠짐없이 적어라.")
+                    ?.let { (who, desc) -> "사용자가 보낸 화면을 $who 가 읽었다:\n$desc\n(스크린샷: ${f.name})" }
+                    ?: "사용자가 화면을 보냈다(스크린샷 ${f.name} 저장). 그림을 볼 수 있는 AI(Claude·GPT·Gemini 키)가 없어 내용은 읽지 못했다. 필요하면 task.ask로 화면 내용을 글로 물어보라."
                 extraText != null -> extraText
-                else -> "사용자가 화면 공유 버튼을 눌렀지만 화면 읽기(접근성)가 꺼져 있어 글자를 읽지 못했다. 사용자에게 상황을 글로 물어보라(task.ask)."
+                else -> "사용자가 화면 보내기를 취소했다. 필요하면 task.ask로 상황을 글로 물어보라."
             }
             d.complete(text)
         }
@@ -433,10 +444,11 @@ class JobRunner(private val h: Hjtk) {
     fun fulfillPick(text: String?) { pickDeferred?.complete(text) }
 
     // ── 빠른 대화(작업 아님) ──────────────────────────────────────
-    fun quickAsk(convId: String, text: String) {
+    fun quickAsk(convId: String, text: String, image: String? = null) {
         busyQuick.update { it + convId }
         scope.launch {
             try {
+                if (image != null) { askWithImage(convId, text, java.io.File(image)); return@launch }
                 val t = text.trim()
                 val body = t.substringAfter(' ', "").trim()
                 val direct = mentioned(t)
@@ -552,6 +564,33 @@ class JobRunner(private val h: Hjtk) {
         return "DeepSeek 검토창" to com.ht.hjtk.core.stream.AepView.clean(r.text)
     }
 
+    /**
+     * 사진과 함께 묻기. 대화 AI가 그림을 볼 수 있으면(Claude·GPT·Gemini API) 그대로,
+     * 아니면 '보는 AI'가 그림을 글로 옮기고 대화 AI(DeepSeek 등)가 답한다 — AI끼리 나눠 맡기.
+     */
+    private suspend fun askWithImage(convId: String, q: String, img: java.io.File) {
+        val a = h.ai.chatAssignment()
+        val question = q.ifBlank { if (com.ht.hjtk.core.I18n.en) "Describe this image and tell me what matters." else "이 사진에서 중요한 내용을 알려 줘." }
+        if (h.ai.canSee(a)) {
+            val port = (chatPorts.getOrPut(a!!.member.key + "|" + (a.model?.id ?: "")) { h.ai.apiPort(a, "", stateless = false) ?: return }) as? com.ht.hjtk.engine.ApiPort
+            if (port != null) {
+                streamingConv.value = convId
+                val r = try { port.sendWithImages(question, convId, false, listOf(img)) } finally { streamingConv.value = null }
+                if (r.text.isNotBlank()) { store.msg(convId, Role.AI, r.text, "text", mapOf("via" to r.via, "who" to a.name)); return }
+            }
+        }
+        val seen = h.ai.see(listOf(img), "이 사진을 자세히 글로 옮겨라: 보이는 글자(그대로), 물건, 표·숫자, 상황. 사용자의 질문: $question", convId)
+        if (seen == null) {
+            store.msg(convId, Role.SYSTEM, "사진을 보려면 그림을 읽을 수 있는 AI가 필요해요. 설정 → AI 모델에서 Claude·ChatGPT·Gemini 중 하나의 키를 넣어 주세요.", "error", mapOf("via" to "NO_VISION"))
+            return
+        }
+        store.msg(convId, Role.SYSTEM, seen.second.take(700) + if (seen.second.length > 700) " …" else "", "collab", mapOf("role" to "보기", "who" to seen.first))
+        val r = chatSend(convId, "[사용자가 보낸 사진 — ${seen.first}가 글로 옮긴 내용]\n${seen.second}\n\n[질문]\n$question", a)
+        val name = a?.name ?: "DeepSeek"
+        if (r.text.isNotBlank()) store.msg(convId, Role.AI, com.ht.hjtk.core.stream.AepView.clean(r.text), "text", mapOf("via" to r.via, "who" to "$name × ${seen.first}"))
+        else store.msg(convId, Role.AI, seen.second, "text", mapOf("via" to "VISION", "who" to seen.first))
+    }
+
     /** @함께: 초안(대화 AI) → 검토(다른 AI) → 종합(대화 AI). 각 단계가 대화에 협업 기록으로 남는다 */
     private suspend fun askTogether(convId: String, q: String) {
         val a = h.ai.chatAssignment()
@@ -625,7 +664,7 @@ class JobRunner(private val h: Hjtk) {
 
 object ScreenShare {
     fun pendingIntent(ctx: android.content.Context): android.app.PendingIntent =
-        android.app.PendingIntent.getBroadcast(ctx, 77, Intent(ctx, ScreenShareReceiver::class.java), android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
+        android.app.PendingIntent.getActivity(ctx, 77, com.ht.hjtk.engine.ScreenCapture.intent(ctx), android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
 }
 
 class ScreenShareReceiver : android.content.BroadcastReceiver() {

@@ -52,6 +52,27 @@ data class AiState(
     fun pref(p: Provider) = prefs[p] ?: GenPrefs()
 }
 
+/** 사용량 기록: 날짜 × AI별 토큰(API는 실제값, 웹·앱은 추정). 사용량 화면과 PC가 읽는다 */
+object UsageLog {
+    data class Day(val date: String, val by: Map<String, IntArray>)
+    @Volatile private var file: File? = null
+    private val days = LinkedHashMap<String, LinkedHashMap<String, IntArray>>()   // date → who → [in, out, calls]
+    val version = MutableStateFlow(0)
+    fun install(ctx: Context) {
+        file = File(ctx.filesDir, "hjtk/usage.json")
+        runCatching { val o = JSONObject(file!!.readText()); o.keys().forEach { d -> val m = LinkedHashMap<String, IntArray>(); val od = o.getJSONObject(d); od.keys().forEach { w -> val a = od.getJSONArray(w); m[w] = intArrayOf(a.getInt(0), a.getInt(1), a.optInt(2)) }; days[d] = m } }
+    }
+    @Synchronized fun add(who: String, input: Int, output: Int) {
+        val d = java.time.LocalDate.now().toString()
+        val m = days.getOrPut(d) { LinkedHashMap() }
+        val a = m.getOrPut(who) { intArrayOf(0, 0, 0) }; a[0] += input; a[1] += output; a[2]++
+        while (days.size > 60) days.remove(days.keys.first())
+        runCatching { file?.writeText(JSONObject().apply { days.forEach { (k, v) -> put(k, JSONObject().apply { v.forEach { (w, x) -> put(w, JSONArray(x.toList())) } }) } }.toString()) }
+        version.value++
+    }
+    @Synchronized fun recent(n: Int): List<Day> = days.entries.toList().takeLast(n).map { Day(it.key, it.value.mapValues { e -> e.value.copyOf() }) }
+}
+
 /** 지금 화면에 흘려 보여 줄 '쓰는 중' 글자들(작업·대화 공통) */
 object LiveBus {
     data class Line(val owner: String, val who: String, val text: String, val at: Long = System.currentTimeMillis())
@@ -161,11 +182,26 @@ class AiHub(private val ctx: Context, private val store: Store, private val brid
         }
     }
 
+    /** 그림을 볼 수 있는 AI(키가 있는 Claude·GPT·Gemini) */
+    fun visionAssignment(): Assignment? {
+        val vis = members().filter { it.transport == Transport.API && it.provider in setOf(Provider.CLAUDE, Provider.GPT, Provider.GEMINI) }
+        return ModelRouter.pick(Role.RESEARCH, Difficulty.STANDARD, vis)
+    }
+    fun canSee(a: Assignment?) = a != null && a.member.transport == Transport.API && a.member.provider in setOf(Provider.CLAUDE, Provider.GPT, Provider.GEMINI)
+
+    /** 이미지를 보고 답한다. (누가 봤나, 답) — 볼 수 있는 AI가 없으면 null */
+    suspend fun see(images: List<File>, question: String, owner: String = "vision"): Pair<String, String>? {
+        val a = visionAssignment() ?: return null
+        val port = apiPort(a, owner, stateless = true) as? ApiPort ?: return null
+        val r = port.sendWithImages(question, owner, true, images)
+        return if (r.text.isBlank()) null else a.name to r.text
+    }
+
     /** 키 확인: 짧은 요청 하나 */
     suspend fun test(acc: AiAccount): String {
         val k = key(acc) ?: return "키가 없어요"
         val model = com.ht.hjtk.core.ai.ModelCatalog.forTier(acc.provider, com.ht.hjtk.core.ai.Tier.FAST)?.id ?: return "모델 없음"
-        val r = ApiStream.chat(acc.provider, acc.baseUrl.ifBlank { acc.provider.defaultBase }, k, model, listOf("user" to "Reply with exactly: OK"), null, GenPrefs(maxTokens = 16)) {}
+        val r = ApiStream.chat(acc.provider, acc.baseUrl.ifBlank { acc.provider.defaultBase }, k, model, listOf("user" to "Reply with exactly: OK"), null, GenPrefs(maxTokens = 16)) { _ -> }
         return r.error ?: "연결됨 · $model · ${r.text.take(20)}"
     }
 }
@@ -176,7 +212,9 @@ class ApiPort(
     private val prefs: GenPrefs, private val owner: String, private val stateless: Boolean, private val ledger: TokenLedger?
 ) : LlmPort {
     private val history = HashMap<String, MutableList<Pair<String, String>>>()
-    override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply {
+    override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply = sendWithImages(text, jobId, newSession, emptyList())
+
+    suspend fun sendWithImages(text: String, jobId: String, newSession: Boolean, images: List<File>): LlmReply {
         val t0 = System.currentTimeMillis()
         val h = if (stateless) mutableListOf() else (if (newSession) mutableListOf<Pair<String, String>>().also { history[jobId] = it } else history.getOrPut(jobId) { mutableListOf() })
         h += "user" to text
@@ -184,12 +222,14 @@ class ApiPort(
         while (h.sumOf { it.second.length } > 24_000 && h.size > 2) { h.removeAt(0); if (h.firstOrNull()?.first == "assistant") h.removeAt(0) }
         var last = 0L
         val o = owner.ifBlank { jobId }
-        val r = ApiStream.chat(p, base, key, model, h.toList(), prefs.system.ifBlank { null }, prefs) { acc ->
+        val r = ApiStream.chat(p, base, key, model, h.toList(), prefs.system.ifBlank { null }, prefs, images) { acc ->
             val now = System.currentTimeMillis()
             if (now - last > Thermal.liveIntervalMs) { last = now; LiveBus.put(o, name, acc) }
         }
         LiveBus.clear(o)
-        ledger?.add(name, r.inTokens.takeIf { it > 0 } ?: Tokens.estimate(h.joinToString("") { it.second }), r.outTokens.takeIf { it > 0 } ?: Tokens.estimate(r.text))
+        val tin = r.inTokens.takeIf { it > 0 } ?: Tokens.estimate(h.joinToString("") { it.second }); val tout = r.outTokens.takeIf { it > 0 } ?: Tokens.estimate(r.text)
+        ledger?.add(name, tin, tout)
+        UsageLog.add(name, tin, tout)
         if (r.text.isNotBlank() && !stateless) h += "assistant" to r.text
         return LlmReply(r.text, r.error?.let { "API_ERR" } ?: "API_${p.name}", r.error == null && r.text.isNotBlank(), System.currentTimeMillis() - t0)
     }
@@ -199,16 +239,29 @@ class ApiPort(
 object ApiStream {
     data class Result(val text: String, val inTokens: Int = 0, val outTokens: Int = 0, val error: String? = null)
 
-    suspend fun chat(p: Provider, base: String, key: String, model: String, messages: List<Pair<String, String>>, system: String?, prefs: GenPrefs, onDelta: (String) -> Unit): Result = withContext(Dispatchers.IO) {
+    /** 이미지(JPEG/PNG)를 base64로. 긴 변 1280px로 이미 줄여 둔 파일을 쓴다 */
+    private fun b64(f: File) = android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
+    private fun mime(f: File) = if (f.name.endsWith(".png", true)) "image/png" else "image/jpeg"
+
+    suspend fun chat(p: Provider, base: String, key: String, model: String, messages: List<Pair<String, String>>, system: String?, prefs: GenPrefs, images: List<File> = emptyList(), onDelta: (String) -> Unit): Result = withContext(Dispatchers.IO) {
         val b = base.trimEnd('/')
+        val lastUser = messages.indexOfLast { it.first == "user" }
         val (url, headers, body) = when (p.apiStyle) {
             "anthropic" -> Triple("$b/v1/messages", mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"),
                 JSONObject().put("model", model).put("max_tokens", prefs.maxTokens).put("stream", true).apply {
                     system?.let { put("system", it) }; prefs.temperature?.let { put("temperature", it) }
-                    put("messages", JSONArray(messages.map { JSONObject().put("role", it.first).put("content", it.second) }))
+                    put("messages", JSONArray(messages.mapIndexed { i, m ->
+                        if (i == lastUser && images.isNotEmpty()) JSONObject().put("role", m.first).put("content", JSONArray().apply {
+                            images.forEach { f -> put(JSONObject().put("type", "image").put("source", JSONObject().put("type", "base64").put("media_type", mime(f)).put("data", b64(f)))) }
+                            put(JSONObject().put("type", "text").put("text", m.second))
+                        }) else JSONObject().put("role", m.first).put("content", m.second)
+                    }))
                 })
             "gemini" -> Triple("$b/models/$model:streamGenerateContent?alt=sse", mapOf("x-goog-api-key" to key),
-                JSONObject().put("contents", JSONArray(messages.map { JSONObject().put("role", if (it.first == "assistant") "model" else "user").put("parts", JSONArray().put(JSONObject().put("text", it.second))) })).apply {
+                JSONObject().put("contents", JSONArray(messages.mapIndexed { i, m -> JSONObject().put("role", if (m.first == "assistant") "model" else "user").put("parts", JSONArray().apply {
+                    if (i == lastUser) images.forEach { f -> put(JSONObject().put("inline_data", JSONObject().put("mime_type", mime(f)).put("data", b64(f)))) }
+                    put(JSONObject().put("text", m.second))
+                }) })).apply {
                     system?.let { put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", it)))) }
                     put("generationConfig", JSONObject().put("maxOutputTokens", prefs.maxTokens).apply { prefs.temperature?.let { t -> put("temperature", t) } })
                 })
@@ -220,7 +273,12 @@ object ApiStream {
                     if (p != Provider.GROK) put("stream_options", JSONObject().put("include_usage", true))
                     if (p == Provider.GPT && prefs.reasoning) put("reasoning_effort", "high")
                     val ms = JSONArray(); system?.let { ms.put(JSONObject().put("role", "system").put("content", it)) }
-                    messages.forEach { ms.put(JSONObject().put("role", it.first).put("content", it.second)) }
+                    messages.forEachIndexed { i, m ->
+                        if (i == lastUser && images.isNotEmpty()) ms.put(JSONObject().put("role", m.first).put("content", JSONArray().apply {
+                            put(JSONObject().put("type", "text").put("text", m.second))
+                            images.forEach { f -> put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:${mime(f)};base64,${b64(f)}"))) }
+                        })) else ms.put(JSONObject().put("role", m.first).put("content", m.second))
+                    }
                     put("messages", ms)
                 })
         }

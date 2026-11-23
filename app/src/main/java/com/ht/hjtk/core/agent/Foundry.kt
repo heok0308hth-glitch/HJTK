@@ -459,7 +459,7 @@ object FoundryPrompts {
     /** 목표와 관련 있는 명령만 추린다(전체 사전 대신 40줄 안팎 → 프롬프트가 짧아지고 엉뚱한 명령이 줄어든다) */
     fun catalogFor(goal: String, disabled: Set<String>): String {
         val g = grams(goal)
-        val ranked = CommandCatalog.ALL.filter { it.id !in never && it.id !in disabled && it.category != Category.UI && it.category != Category.TASK }
+        val ranked = CommandCatalog.ALL.filter { it.id !in never && it.id !in disabled && it.category != Category.UI && (it.category != Category.TASK || it.id.startsWith("routine.")) }
             .map { s -> s to grams(s.id + " " + s.title + " " + s.desc + " " + s.aliases.joinToString(" ")).count { it in g } }
             .sortedByDescending { it.second }
         val pick = (core.mapNotNull { CommandCatalog.find(it) } + ranked.filter { it.second > 0 }.map { it.first }).distinctBy { it.id }.take(42)
@@ -618,7 +618,7 @@ object FoundryCheck {
         val steps = idea.steps.mapNotNull { s ->
             if (s.kind != "cmd") return@mapNotNull s
             val spec = tools.spec(s.cmd) ?: CommandCatalog.find(s.cmd)?.let { tools.spec(it.id) }
-            if (spec == null || spec.category == Category.UI || spec.category == Category.TASK) { problems += "없는/쓸 수 없는 명령 ${s.cmd} 제외"; score -= 2; return@mapNotNull null }
+            if (spec == null || spec.category == Category.UI || (spec.category == Category.TASK && !spec.id.startsWith("routine."))) { problems += "없는/쓸 수 없는 명령 ${s.cmd} 제외"; score -= 2; return@mapNotNull null }
             val args = s.args.toMutableMap()
             spec.params.filter { it.required && args[it.name].isNullOrBlank() }.forEach { p ->
                 if (p.name in setOf("q", "query", "text", "prompt", "topic")) args[p.name] = "{goal}" else { problems += "${spec.id}: ${p.name} 없음"; score -= 2; return@mapNotNull null }

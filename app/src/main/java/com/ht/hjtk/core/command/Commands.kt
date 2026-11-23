@@ -253,7 +253,7 @@ object CommandCatalog {
         c("life.pomodoro", "뽀모도로", Category.LIFE, Effect.LOCAL, "minutes:집중 분(기본25)|label:할 일", "집중 타이머 시작", "뽀모도로"),
         c("life.checklist", "체크리스트", Category.LIFE, Effect.LOCAL, "name*:이름|items*:항목(줄바꿈)", "체크리스트 파일 생성", "체크리스트"),
         c("life.dday_board", "마감 보드", Category.LIFE, Effect.READ, "", "등록된 마감들을 D-day 순으로", "마감보드")
-    ) + MoreCommands.specs + ConnectorCommands.specs + PhoneCommands.specs
+    ) + MoreCommands.specs + ConnectorCommands.specs + PhoneCommands.specs + RoutineCommands.specs
 
     private val byId = ALL.associateBy { it.id }
     private val byAlias: Map<String, CommandSpec> = ALL.flatMap { s -> s.aliases.map { it.lowercase() to s } }.toMap()

@@ -330,7 +330,9 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
 
     override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply = mutex.withLock {
         ui { main.removeCallbacks(pauseIdle); web?.onResume() }
-        try { sendLocked(text, newSession) } finally { onMain { scheduleIdle() } }
+        try {
+            sendLocked(text, newSession).also { r -> if (r.text.isNotBlank()) UsageLog.add("DeepSeek", com.ht.hjtk.core.ai.Tokens.estimate(text), com.ht.hjtk.core.ai.Tokens.estimate(r.text)) }
+        } finally { onMain { scheduleIdle() } }
     }
 
     private suspend fun sendLocked(text: String, newSession: Boolean): LlmReply {
