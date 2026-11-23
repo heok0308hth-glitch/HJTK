@@ -36,7 +36,12 @@ sealed interface Route {
     data class Command(val id: String) : Route
     data class PipelineEdit(val id: String?) : Route
     data object MailAdd : Route
-    data object Pet : Route
+    data object Ai : Route
+    data object Accounts : Route
+    data object Browser : Route
+    data object Phone : Route
+    data object Live : Route
+    data object Pc : Route
 }
 
 enum class Mode(val label: String) { AUTO("자동"), QUICK("대화"), MISSION("작업 맡기기") }
@@ -59,6 +64,9 @@ class MainVm(val h: Hjtk) {
     fun openConversation(id: String) { store.ensureLoaded(id); convId.value = id; tab(Route.Chat) }
     fun newChat() { val c = store.newConversation(); convId.value = c.id; tab(Route.Chat) }
 
+    val pickerOpen = MutableStateFlow(false)
+    val difficulty = MutableStateFlow(h.ai.state.value.difficulty)
+
     fun send(text0: String) {
         val text = text0.trim(); if (text.isEmpty()) return
         draft.value = ""
@@ -74,7 +82,7 @@ class MainVm(val h: Hjtk) {
             is InputRouter.Route.Mission -> {
                 store.msg(cid, Role.USER, text, meta = mapOf("mission" to "true"))
                 val sk = Regex("^\\[([^]]+)]\\s*").find(r.goal)
-                runner.startMission(cid, if (sk != null) r.goal.removeRange(sk.range).ifBlank { r.goal } else r.goal, sk?.groupValues?.get(1))
+                runner.startMission(cid, if (sk != null) r.goal.removeRange(sk.range).ifBlank { r.goal } else r.goal, sk?.groupValues?.get(1), difficulty.value)
             }
             is InputRouter.Route.Quick -> { store.msg(cid, Role.USER, text); runner.quickAsk(cid, r.text) }
         }

@@ -1,5 +1,6 @@
 package com.ht.hjtk.ui
 
+import com.ht.hjtk.core.I18n
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.Image
@@ -63,10 +64,10 @@ fun TasksScreen(vm: MainVm) {
             listOf("진행 중", "완료", "전체").forEachIndexed { i, l -> Chip(l, filter == i) { filter = i } }
         }
         if (shown.isEmpty()) Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.mascot_sleep), null, Modifier.size(120.dp))
+            Image(painterResource(R.drawable.hjtk_mark_ink), null, Modifier.size(56.dp))
             Spacer(Modifier.height(10.dp))
             Text(if (filter == 0) "진행 중인 작업이 없어요" else "아직 기록이 없어요", style = T.head)
-            Text("대화에서 '작업 맡기기'로 보내면 여기서 진행·보고·결과물을 볼 수 있어요.", style = T.small, modifier = Modifier.padding(top = 4.dp))
+            Text(I18n.t("대화에서 '작업 맡기기'로 보내면 여기서 진행·보고·결과물을 볼 수 있어요."), style = T.small, modifier = Modifier.padding(top = 4.dp))
         } else LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(shown, key = { it.id }) { j -> JobCard(vm, j) }
         }
@@ -104,7 +105,7 @@ fun JobScreen(vm: MainVm, id: String) {
     val journal = remember(j.updatedAt) { runCatching { vm.store.journalFile(id).readLines().takeLast(40).reversed() }.getOrDefault(emptyList()) }
     Column(Modifier.fillMaxSize()) {
         TopBar("작업 ${j.id.take(6)}", stateLabel(j.state), onBack = { vm.back() }) {
-            Text("대화로", style = T.small.copy(color = C.Ink, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.openConversation(j.convId) }).padding(8.dp))
+            Text(I18n.t("대화로"), style = T.small.copy(color = C.Ink, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.openConversation(j.convId) }).padding(8.dp))
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 40.dp)) {
             Spacer(Modifier.height(14.dp))
@@ -113,16 +114,16 @@ fun JobScreen(vm: MainVm, id: String) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when {
-                    j.state == "SUSPENDED" -> InkButton("이어서 진행", accent = true) { vm.runner.resume(id) }
-                    j.state == "PAUSED" -> InkButton("재개", accent = true) { vm.runner.unpause(id) }
-                    j.running -> GhostButton("일시정지") { vm.runner.pause(id) }
-                    else -> GhostButton("같은 목표로 다시") { vm.runner.startMission(j.convId, j.goal); vm.openConversation(j.convId) }
+                    j.state == "SUSPENDED" -> InkButton(I18n.t("이어서 진행"), accent = true) { vm.runner.resume(id) }
+                    j.state == "PAUSED" -> InkButton(I18n.t("재개"), accent = true) { vm.runner.unpause(id) }
+                    j.running -> GhostButton(I18n.t("일시정지")) { vm.runner.pause(id) }
+                    else -> GhostButton(I18n.t("같은 목표로 다시")) { vm.runner.startMission(j.convId, j.goal); vm.openConversation(j.convId) }
                 }
-                if (j.running || j.state == "SUSPENDED") GhostButton("중지") { vm.runner.abort(id) }
-                if (!j.running) GhostButton("삭제") { vm.store.deleteJob(id); vm.back() }
+                if (j.running || j.state == "SUSPENDED") GhostButton(I18n.t("중지")) { vm.runner.abort(id) }
+                if (!j.running) GhostButton(I18n.t("삭제")) { vm.store.deleteJob(id); vm.back() }
             }
-            SectionHead("01", "계획")
-            if (plan == null || plan.length() == 0) Text("아직 계획이 없어요", style = T.small, modifier = Modifier.padding(vertical = 10.dp))
+            SectionHead("01", I18n.t("계획"))
+            if (plan == null || plan.length() == 0) Text(I18n.t("아직 계획이 없어요"), style = T.small, modifier = Modifier.padding(vertical = 10.dp))
             else for (k in 0 until plan.length()) { val o = plan.getJSONObject(k)
                 Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     val s = o.optString("s")
@@ -133,13 +134,13 @@ fun JobScreen(vm: MainVm, id: String) {
                     Text("~${o.optInt("eta")}s", style = T.label)
                 }
             }
-            if (j.final.isNotBlank()) { SectionHead("02", "결과"); Spacer(Modifier.height(8.dp)); MdText(j.final) }
-            SectionHead("03", "결과물 · 작업공간", "공유") { files.firstOrNull()?.let { vm.openFile(ctx, it) } }
-            if (files.isEmpty()) Text("파일이 아직 없어요", style = T.small, modifier = Modifier.padding(vertical = 10.dp))
+            if (j.final.isNotBlank()) { SectionHead("02", I18n.t("결과")); Spacer(Modifier.height(8.dp)); MdText(j.final) }
+            SectionHead("03", I18n.t("결과물 · 작업공간"), "공유") { files.firstOrNull()?.let { vm.openFile(ctx, it) } }
+            if (files.isEmpty()) Text(I18n.t("파일이 아직 없어요"), style = T.small, modifier = Modifier.padding(vertical = 10.dp))
             files.forEachIndexed { i, f -> NumRow(i + 1, f.name, "${f.length()}B · ${dt.format(Date(f.lastModified()))}", onClick = { vm.openFile(ctx, f) }); Hairline() }
             SectionHead("04", "보고 ${reports.size}회")
             reports.reversed().forEach { r -> Column(Modifier.padding(vertical = 8.dp)) { Label("#${r.meta["n"]} · ${dt.format(Date(r.at))}"); Text(r.text, style = T.small.copy(color = C.Ink2)) }; Hairline() }
-            SectionHead("05", "저널 (해시 체인)")
+            SectionHead("05", I18n.t("저널 (해시 체인)"))
             journal.forEach { l -> Text(l.replace(Regex("\"digest\":\"([0-9a-f]{10})[0-9a-f]+\""), "\"digest\":\"$1…\""), style = T.mono.copy(fontSize = 10.5.sp, color = C.Graphite), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 3.dp)) }
         }
     }
@@ -160,7 +161,7 @@ fun ConversationsScreen(vm: MainVm) {
         }
         Row(Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(C.Paper2).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Ico(I.Search, 18.dp, C.Mute); Spacer(Modifier.width(8.dp))
-            BasicTextField(q, { q = it }, textStyle = T.body, cursorBrush = SolidColor(C.Ink), modifier = Modifier.weight(1f), decorationBox = { i -> if (q.isEmpty()) Text("제목·내용 검색", style = T.body.copy(color = C.Mute)); i() })
+            BasicTextField(q, { q = it }, textStyle = T.body, cursorBrush = SolidColor(C.Ink), modifier = Modifier.weight(1f), decorationBox = { i -> if (q.isEmpty()) Text(I18n.t("제목·내용 검색"), style = T.body.copy(color = C.Mute)); i() })
         }
         LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
             items(shown, key = { it.id }) { c ->
@@ -194,16 +195,16 @@ fun CockpitScreen(vm: MainVm) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 10.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(40.dp).press({ vm.back() }), contentAlignment = Alignment.Center) { Ico(I.Back, 22.dp, C.OnInk) }
             Column(Modifier.weight(1f)) {
-                Text("조종석", style = T.title.copy(color = C.OnInk))
+                Text(I18n.t("조종석"), style = T.title.copy(color = C.OnInk))
                 Label(when (st) { DeepSeekWeb.Status.READY -> "연결됨 · 직접 입력해도 됩니다"; DeepSeekWeb.Status.LOGIN -> "한 번만 로그인해 주세요 · 끝나면 질문이 이어집니다"; DeepSeekWeb.Status.CHALLENGE -> "확인을 한 번만 눌러 주세요"; DeepSeekWeb.Status.OFFLINE -> "네트워크에 연결할 수 없어요"; else -> diag.ifBlank { "여는 중" } }, color = if (st == DeepSeekWeb.Status.READY) C.OnInkMute else C.Red)
             }
-            Text("새 대화", style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.h.deepseek.newChat() }).padding(8.dp))
-            Text("새로고침", style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.h.deepseek.reload() }).padding(8.dp))
+            Text(I18n.t("새 대화"), style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.h.deepseek.newChat() }).padding(8.dp))
+            Text(I18n.t("새로고침"), style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.h.deepseek.reload() }).padding(8.dp))
         }
-        Text("AI가 지금 쓰는 DeepSeek 화면 그대로입니다. 로그인·확인처럼 사람만 할 수 있는 일은 여기서 하고, 작업 중에는 지켜보거나 직접 개입할 수 있어요.",
+        Text(I18n.t("AI가 지금 쓰는 DeepSeek 화면 그대로입니다. 로그인·확인처럼 사람만 할 수 있는 일은 여기서 하고, 작업 중에는 지켜보거나 직접 개입할 수 있어요."),
             style = T.small.copy(color = C.OnInkMute, fontSize = 12.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         Box(Modifier.weight(1f).fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)).background(C.Paper)) {
-            if (androidx.compose.ui.platform.LocalInspectionMode.current || !Motion.enabled) Text("DeepSeek 화면", style = T.small, modifier = Modifier.align(Alignment.Center))
+            if (androidx.compose.ui.platform.LocalInspectionMode.current || !Motion.enabled) Text(I18n.t("DeepSeek 화면"), style = T.small, modifier = Modifier.align(Alignment.Center))
             else AndroidView(factory = { c -> FrameLayout(c).also { f -> f.layoutParams = ViewGroup.LayoutParams(-1, -1); vm.h.deepseek.attach(f) } }, modifier = Modifier.fillMaxSize(),
                 onRelease = { f -> f.removeAllViews(); vm.h.deepseek.park() })
         }
@@ -218,8 +219,8 @@ fun MemoryScreen(vm: MainVm) {
         TopBar("기억", "${mems.size}개 · 신경망 없이 BM25로 찾습니다", onBack = { vm.back() })
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             BasicTextField(add, { add = it }, textStyle = T.body, cursorBrush = SolidColor(C.Ink), modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(C.Paper2).padding(12.dp),
-                decorationBox = { i -> if (add.isEmpty()) Text("예: 나는 무료 공모전만 원해", style = T.body.copy(color = C.Mute)); i() })
-            Spacer(Modifier.width(8.dp)); InkButton("기억") { if (add.isNotBlank()) { vm.store.memories.value = vm.store.memories.value + com.ht.hjtk.core.Memory(vm.store.id("mem"), add, "직접", System.currentTimeMillis()); vm.store.persistHub(); add = "" } }
+                decorationBox = { i -> if (add.isEmpty()) Text(I18n.t("예: 나는 무료 공모전만 원해"), style = T.body.copy(color = C.Mute)); i() })
+            Spacer(Modifier.width(8.dp)); InkButton(I18n.t("기억")) { if (add.isNotBlank()) { vm.store.memories.value = vm.store.memories.value + com.ht.hjtk.core.Memory(vm.store.id("mem"), add, "직접", System.currentTimeMillis()); vm.store.persistHub(); add = "" } }
         }
         LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
             items(mems.reversed(), key = { it.id }) { m ->

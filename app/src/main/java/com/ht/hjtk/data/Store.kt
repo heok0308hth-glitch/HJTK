@@ -50,16 +50,18 @@ data class JobRec(
     val id: String, val convId: String, val goal: String, val state: String, val createdAt: Long, val updatedAt: Long,
     val progress: Double = 0.0, val eta: String = "", val next: String = "", val now: String = "", val plan: String = "[]",
     val via: String = "", val final: String = "", val label: String = "", val reports: Int = 0, val cmds: Int = 0, val dsSession: String? = null,
-    val lastPrompt: String = ""
+    val lastPrompt: String = "",
+    /** 2.0: 난이도 · 팀(역할=이름 줄들) · 토큰 추정 */
+    val diff: String = "STANDARD", val team: String = "", val tokens: Int = 0
 ) {
     val running get() = state == "RUNNING" || state.startsWith("PAUSED")
     fun toJson(): JSONObject = JSONObject().put("id", id).put("c", convId).put("g", goal).put("s", state).put("ca", createdAt).put("ua", updatedAt)
         .put("p", progress).put("eta", eta).put("n", next).put("now", now).put("plan", plan).put("via", via).put("f", final).put("l", label)
-        .put("rep", reports).put("cmds", cmds).put("ds", dsSession ?: "").put("lp", lastPrompt)
+        .put("rep", reports).put("cmds", cmds).put("ds", dsSession ?: "").put("lp", lastPrompt).put("diff", diff).put("team", team).put("tok", tokens)
     companion object {
         fun from(o: JSONObject) = JobRec(o.getString("id"), o.optString("c"), o.optString("g"), o.optString("s"), o.optLong("ca"), o.optLong("ua"),
             o.optDouble("p", 0.0), o.optString("eta"), o.optString("n"), o.optString("now"), o.optString("plan", "[]"), o.optString("via"), o.optString("f"), o.optString("l"),
-            o.optInt("rep"), o.optInt("cmds"), o.optString("ds").ifBlank { null }, o.optString("lp"))
+            o.optInt("rep"), o.optInt("cmds"), o.optString("ds").ifBlank { null }, o.optString("lp"), o.optString("diff", "STANDARD"), o.optString("team"), o.optInt("tok"))
     }
 }
 
@@ -77,7 +79,7 @@ data class Settings(
     val geminiMode: String = "app",          // app | web | api
     val dsModel: String = "deepseek-flash",
     val geminiModel: String = "gemini-3.8-flash",
-    val petEnabled: Boolean = true,
+    val petEnabled: Boolean = false,   // 2.0에서 캐릭터 기능 제거 — 저장 호환용으로만 남김
     val reportMinutes: Int = 5,
     val autoAllowE2: Boolean = false,
     val userName: String = "",
@@ -86,13 +88,15 @@ data class Settings(
     val onboarded: Boolean = false,
     val geminiWaitMin: Int = 10,
     /** 작업 공정의 검토 AI: auto(키 있으면 Gemini, 없으면 DeepSeek 두 번째 창) · gemini · gemini_app(1탭) · deepseek2 · off */
-    val collab: String = "auto"
+    val collab: String = "auto",
+    /** 화면·AI 답 언어: "" 아직 안 고름(첫 실행에 묻는다) · ko · en */
+    val lang: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject().put("dsMode", dsMode).put("gMode", geminiMode).put("dsModel", dsModel).put("gModel", geminiModel).put("pet", petEnabled)
-        .put("rep", reportMinutes).put("autoE2", autoAllowE2).put("name", userName).put("city", homeCity).put("defM", defaultMission).put("onb", onboarded).put("gw", geminiWaitMin).put("collab", collab)
+        .put("rep", reportMinutes).put("autoE2", autoAllowE2).put("name", userName).put("city", homeCity).put("defM", defaultMission).put("onb", onboarded).put("gw", geminiWaitMin).put("collab", collab).put("lang", lang)
     companion object {
         fun from(o: JSONObject) = Settings(o.optString("dsMode", "web"), o.optString("gMode", "app"), o.optString("dsModel", "deepseek-flash"), o.optString("gModel", "gemini-3.8-flash"),
-            o.optBoolean("pet", true), o.optInt("rep", 5), o.optBoolean("autoE2"), o.optString("name"), o.optString("city", "서울"), o.optBoolean("defM"), o.optBoolean("onb"), o.optInt("gw", 10), o.optString("collab", "auto"))
+            o.optBoolean("pet", true), o.optInt("rep", 5), o.optBoolean("autoE2"), o.optString("name"), o.optString("city", "서울"), o.optBoolean("defM"), o.optBoolean("onb"), o.optInt("gw", 10), o.optString("collab", "auto"), o.optString("lang", if (o.optBoolean("onb")) "ko" else ""))
     }
 }
 

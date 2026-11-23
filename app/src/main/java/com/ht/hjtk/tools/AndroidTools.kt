@@ -95,7 +95,7 @@ class AndroidTools(
     override suspend fun run(call: CommandCall): CommandResult {
         val id = spec(call.cmd)?.id ?: call.cmd
         pure[id]?.let { return it.run(call.copy(cmd = id)) }
-        val handler = handlers[id] ?: return CommandResult.fail("'$id' 명령은 이 기기에서 아직 실행할 수 없습니다")
+        val handler = handlers[id] ?: h.connectorHandlers[id] ?: return CommandResult.fail("'$id' 명령은 이 기기에서 아직 실행할 수 없습니다")
         return handler.run(call.copy(cmd = id))
     }
 

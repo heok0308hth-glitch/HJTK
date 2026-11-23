@@ -33,6 +33,14 @@ class Hjtk(val app: Context) {
     val deepseekApi = DeepSeekApi(store)
     val gemini = GeminiApi(store)
     val bridge = ExternalAiBridge(app, launcher)
+    val ai = com.ht.hjtk.engine.AiHub(app, store, bridge)
+    val connectors = com.ht.hjtk.engine.ConnectorHub(app, store)
+    val reader = com.ht.hjtk.engine.PageReader(app)
+    val phone by lazy { com.ht.hjtk.engine.PhoneAgent(app, store, connectors, launcher) }
+    val pc by lazy { com.ht.hjtk.engine.PcServer(this) }
+    val connectorHandlers by lazy { connectors.handlers(reader, ai) + phone.handlers }
+    /** 대화용 두 번째 DeepSeek 창(작업이 주 창을 쓰는 동안만 만든다. 로그인 쿠키는 공유) */
+    val deepseekChat by lazy { DeepSeekWeb(app) }
     val deepseekApp = DeepSeekAppPort(bridge, store)
     val runner by lazy { JobRunner(this) }
 
@@ -46,9 +54,11 @@ class HjtkApp : Application() {
     override fun onCreate() {
         super.onCreate()
         com.ht.hjtk.engine.CrashLog.install(this)
+        com.ht.hjtk.engine.Thermal.install(this)
         Notifier.channels(this)
         AppVisibility.install()
         val h = Hjtk.get(this)
+        com.ht.hjtk.core.I18n.en = h.store.settings.value.lang == "en"
         h.runner   // 중단된 작업 표시
         // 지난 실행이 비정상 종료였다면, 원인을 가장 최근 대화에 한 번 보여 준다(사용자가 그대로 복사해 전달할 수 있게)
         com.ht.hjtk.engine.CrashLog.takeLastCrash(this)?.let { full ->

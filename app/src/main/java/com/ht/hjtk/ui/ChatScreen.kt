@@ -1,5 +1,6 @@
 package com.ht.hjtk.ui
 
+import com.ht.hjtk.core.I18n
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -12,6 +13,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -39,6 +44,7 @@ import com.ht.hjtk.data.Role
 import com.ht.hjtk.engine.Clip
 import com.ht.hjtk.engine.DeepSeekWeb
 import kotlinx.coroutines.delay
+import com.ht.hjtk.engine.LiveBus
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -78,11 +84,16 @@ fun ChatScreen(vm: MainVm) {
             Box(Modifier.size(40.dp).press({ vm.go(Route.Conversations) }), contentAlignment = Alignment.Center) { Ico(I.Menu, 22.dp) }
             Column(Modifier.weight(1f).padding(start = 4.dp)) {
                 Text(conv?.title ?: "새 대화", style = T.head, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Row(Modifier.press({ vm.go(Route.Cockpit) }), verticalAlignment = Alignment.CenterVertically) {
-                    SignalDot(when (ds) { DeepSeekWeb.Status.READY -> C.Ink; DeepSeekWeb.Status.LOGIN, DeepSeekWeb.Status.CHALLENGE -> C.Red; else -> C.Mute }, 6.dp, pulse = ds == DeepSeekWeb.Status.LOGIN)
+                // 클로드처럼: 모델 이름을 누르면 고르기 판. DeepSeek 웹이면 로그인 상태를 함께 보여 준다
+                val aiSt by vm.h.ai.state.collectAsState()
+                val chatA = remember(aiSt, ds) { vm.h.ai.chatAssignment() }
+                val web = chatA == null || chatA.member.transport == com.ht.hjtk.core.ai.Transport.WEB
+                val warn = web && (ds == DeepSeekWeb.Status.LOGIN || ds == DeepSeekWeb.Status.CHALLENGE)
+                Row(Modifier.press({ if (warn) vm.go(Route.Cockpit) else vm.pickerOpen.value = true }), verticalAlignment = Alignment.CenterVertically) {
+                    SignalDot(if (warn) C.Red else if (!web || ds == DeepSeekWeb.Status.READY) C.Ink else C.Mute, 6.dp, pulse = warn)
                     Spacer(Modifier.width(6.dp))
-                    Label(when (ds) { DeepSeekWeb.Status.READY -> "DeepSeek 연결됨"; DeepSeekWeb.Status.LOGIN -> "DeepSeek 로그인 필요"; DeepSeekWeb.Status.CHALLENGE -> "DeepSeek 확인 필요"; DeepSeekWeb.Status.LOADING -> "DeepSeek 여는 중"; else -> "DeepSeek · 탭해서 연결" },
-                        color = if (ds == DeepSeekWeb.Status.LOGIN || ds == DeepSeekWeb.Status.CHALLENGE) C.Red else C.Mute)
+                    Label((if (aiSt.chatPin == "auto") "자동 · " else "") + (chatA?.name ?: "AI 연결 필요") + if (warn) " · 로그인 필요" else "", color = if (warn) C.Red else C.Mute)
+                    Spacer(Modifier.width(3.dp)); Ico(I.Down, 12.dp, C.Mute)
                 }
             }
             Box(Modifier.size(40.dp).press({ vm.newChat() }), contentAlignment = Alignment.Center) { Ico(I.Plus, 22.dp) }
@@ -117,13 +128,14 @@ private fun Thinking(vm: MainVm, cid: String) {
     // 경과 초를 보여 준다: '멈췄나?'와 '생각 중'을 사용자가 구분할 수 있게
     var sec by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) { if (Motion.enabled) while (true) { delay(1000); sec++ } }
-    val owner by vm.runner.streamingConv.collectAsState()
-    val live by vm.h.deepseek.partial.collectAsState()
-    val text = if (owner == cid) remember(live) { com.ht.hjtk.core.stream.AepView.clean(live) } else ""
+    val lines by LiveBus.lines.collectAsState()
+    val line = lines[cid]
+    val text = line?.text?.let { remember(it) { com.ht.hjtk.core.stream.AepView.clean(it) } } ?: ""
     Column(Modifier.fillMaxWidth().padding(end = 24.dp, top = 2.dp, bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             SignalDot(C.Ink, 6.dp, pulse = true); Spacer(Modifier.width(8.dp))
-            Label(when { text.isNotEmpty() -> "DeepSeek · 받는 중"; sec < 3 -> "DeepSeek에게 묻는 중"; else -> "DeepSeek에게 묻는 중 · ${sec}초" })
+            val who = line?.who ?: vm.h.ai.chatAssignment()?.name ?: "AI"
+            Label(when { text.isNotEmpty() -> "$who · 받는 중"; sec < 3 -> "${who}에게 묻는 중"; else -> "${who}에게 묻는 중 · ${sec}초" })
         }
         // 글자가 도착하는 대로 그린다(완료되면 같은 자리에 정식 메시지로 바뀐다)
         if (text.isNotEmpty()) { Spacer(Modifier.height(4.dp)); MdText(text) }
@@ -142,10 +154,9 @@ private fun EmptyChat(vm: MainVm) {
         Row(verticalAlignment = Alignment.Bottom) {
             Image(painterResource(R.drawable.hjtk_mark_ink), null, Modifier.size(54.dp))
             Spacer(Modifier.weight(1f))
-            Image(painterResource(R.drawable.mascot_sit), null, Modifier.size(88.dp))
         }
         Spacer(Modifier.height(14.dp))
-        Text("무엇을 맡길까요?", style = T.display)
+        Text(I18n.t("무엇을 맡길까요?"), style = T.display)
         Spacer(Modifier.height(6.dp))
         Text("HJTK 안에는 AI가 없어요. 폰의 DeepSeek에게 일을 시키고, 명령어 ${CommandCatalog.ALL.size}개로 실행하고, 5분마다 보고합니다.", style = T.small)
         Spacer(Modifier.height(18.dp))
@@ -192,24 +203,43 @@ private fun SignalPanel(vm: MainVm, j: JobRec) {
         if (!open) Row(Modifier.padding(top = 8.dp).press({ open = true }), verticalAlignment = Alignment.CenterVertically) {
             Text(listOfNotNull(j.now.takeIf { it.isNotBlank() }?.let { "지금 $it" }, j.eta.takeIf { it.isNotBlank() }).joinToString(" · ").ifBlank { "계획을 세우는 중" },
                 style = T.small.copy(color = C.OnInkMute, fontSize = 12.5.sp), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (j.state == "SUSPENDED") Text("이어서 진행", style = T.small.copy(color = C.Red, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.runner.resume(j.id) }).padding(start = 8.dp))
-            else Text("펼치기", style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(start = 8.dp))
+            if (j.state == "SUSPENDED") Text(I18n.t("이어서 진행"), style = T.small.copy(color = C.Red, fontWeight = FontWeight.Bold), modifier = Modifier.press({ vm.runner.resume(j.id) }).padding(start = 8.dp))
+            else Text(I18n.t("펼치기"), style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(start = 8.dp))
         }
+        // 지금 AI가 쓰고 있는 글(접혀 있어도 보인다 — 클로드처럼 진행이 눈에 보이게)
+        LiveWriting(j.id, dark = true)
         AnimatedVisibility(open) {
             Column(Modifier.padding(top = 10.dp)) {
-                if (j.now.isNotBlank()) KV("지금", j.now)
-                if (j.next.isNotBlank()) KV("다음", j.next)
-                KV("남은 시간", j.eta.ifBlank { "계획을 세우는 중" })
+                val liveAll by LiveBus.lines.collectAsState()
+                if (j.team.isNotBlank()) { CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides C.OnInk) { TeamBoardDark(j.team, j.tokens, liveAll, j.id) }; Spacer(Modifier.height(8.dp)) }
+                if (j.now.isNotBlank()) KV(I18n.t("지금"), j.now)
+                if (j.next.isNotBlank()) KV(I18n.t("다음"), j.next)
+                KV(I18n.t("남은 시간"), j.eta.ifBlank { "계획을 세우는 중" })
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (j.state == "SUSPENDED") InkButton("이어서 진행", accent = true) { vm.runner.resume(j.id) }
-                    else if (paused && !needs) InkButton("재개", accent = true) { vm.runner.unpause(j.id) }
-                    else if (!needs) GhostButton("일시정지", onInk = true) { vm.runner.pause(j.id) }
-                    GhostButton("지금 보고", onInk = true) { vm.runner.reportNow(j.id) }
-                    GhostButton("조종석", onInk = true) { vm.go(Route.Cockpit) }
+                    if (j.state == "SUSPENDED") InkButton(I18n.t("이어서 진행"), accent = true) { vm.runner.resume(j.id) }
+                    else if (paused && !needs) InkButton(I18n.t("재개"), accent = true) { vm.runner.unpause(j.id) }
+                    else if (!needs) GhostButton(I18n.t("일시정지"), onInk = true) { vm.runner.pause(j.id) }
+                    GhostButton(I18n.t("지금 보고"), onInk = true) { vm.runner.reportNow(j.id) }
+                    GhostButton(I18n.t("조종석"), onInk = true) { vm.go(Route.Cockpit) }
                     Box(Modifier.size(42.dp).clip(RoundedCornerShape(6.dp)).border(1.dp, C.Ink3, RoundedCornerShape(6.dp)).press({ vm.runner.abort(j.id) }), contentAlignment = Alignment.Center) { Ico(I.Stop, 18.dp, C.OnInk) }
                 }
             }
+        }
+    }
+}
+
+/** 먹색 패널용 팀 표 */
+@Composable
+private fun TeamBoardDark(team: String, tokens: Int, live: Map<String, LiveBus.Line>, jobId: String) {
+    val rows = team.lines().filter { it.contains("=") }.map { it.substringBefore("=") to it.substringAfter("=").substringBefore(" · ") }
+    Row(verticalAlignment = Alignment.CenterVertically) { Label(I18n.t("AI 팀"), color = C.OnInkMute, modifier = Modifier.weight(1f)); if (tokens > 0) Label("토큰 약 ${com.ht.hjtk.core.ai.Tokens.fmt(tokens)}", color = C.OnInkMute) }
+    rows.forEach { (role, name) ->
+        val busy = live.values.any { it.owner.startsWith(jobId) && it.who.startsWith(name.substringBefore(" (")) }
+        Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(role, style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.Bold), modifier = Modifier.width(44.dp))
+            Text(name, style = T.small.copy(color = C.OnInk), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (busy) { SignalDot(C.Red, 6.dp, pulse = true); Spacer(Modifier.width(4.dp)); Label(I18n.t("쓰는 중"), color = C.Red) }
         }
     }
 }
@@ -300,10 +330,10 @@ private fun AnswerActions(vm: MainVm, text: String) {
     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
         @Composable fun act(label: String, f: () -> Unit) = Text(if (done == label) "$label ✓" else label, style = T.small.copy(fontSize = 12.sp, color = if (done == label) C.Ink else C.Graphite, fontWeight = FontWeight.SemiBold),
             modifier = Modifier.clip(RoundedCornerShape(5.dp)).press({ f(); done = label }).padding(horizontal = 8.dp, vertical = 6.dp))
-        act("복사") { ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("HJTK", text)) }
-        act("공유") { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text), "답 공유").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        act("다시 묻기") { vm.retryLast() }
-        act("기억하기") { vm.remember(text) }
+        act(I18n.t("복사")) { ctx.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("HJTK", text)) }
+        act(I18n.t("공유")) { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text), "답 공유").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        act(I18n.t("다시 묻기")) { vm.retryLast() }
+        act(I18n.t("기억하기")) { vm.remember(text) }
     }
 }
 
@@ -336,7 +366,7 @@ private fun ReportCard(m: Msg) {
     val lines = m.text.lines()
     FoldCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(painterResource(R.drawable.mascot_wave), null, Modifier.size(30.dp)); Spacer(Modifier.width(8.dp))
+            SignalDot(C.Red, 7.dp); Spacer(Modifier.width(8.dp))
             Label("${if (m.meta["ai"] == "true") "AI 보고" else "5분 보고"} #${m.meta["n"] ?: ""} · ${hm.format(Date(m.at))}")
         }
         Spacer(Modifier.height(6.dp))
@@ -374,8 +404,8 @@ private fun ApprovalCard(vm: MainVm, m: Msg) {
         if (st == "pending") {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InkButton("실행", Modifier.weight(1f), accent = true) { vm.approve(m.meta["pid"]!!, true) }
-                GhostButton("거절", Modifier.weight(1f), onInk = true) { vm.approve(m.meta["pid"]!!, false) }
+                InkButton(I18n.t("실행"), Modifier.weight(1f), accent = true) { vm.approve(m.meta["pid"]!!, true) }
+                GhostButton(I18n.t("거절"), Modifier.weight(1f), onInk = true) { vm.approve(m.meta["pid"]!!, false) }
             }
         }
     }
@@ -399,12 +429,12 @@ private fun AskCard(vm: MainVm, m: Msg) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BasicTextField(free, { free = it }, textStyle = T.body, cursorBrush = SolidColor(C.Ink),
                     modifier = Modifier.weight(1f).clip(RoundedCornerShape(6.dp)).background(C.Paper).padding(10.dp),
-                    decorationBox = { inner -> if (free.isEmpty()) Text("직접 답하기 · 답을 붙여넣어도 돼요", style = T.small); inner() })
+                    decorationBox = { inner -> if (free.isEmpty()) Text(I18n.t("직접 답하기 · 답을 붙여넣어도 돼요"), style = T.small); inner() })
                 Spacer(Modifier.width(8.dp))
                 Box(Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).background(C.Ink).press({ if (free.isNotBlank()) vm.answer(m.meta["pid"]!!, free) }), contentAlignment = Alignment.Center) { Ico(I.Send, 18.dp, C.OnInk) }
             }
             val ctx = LocalContext.current
-            Text("클립보드 붙여넣기", style = T.small.copy(color = C.Ink, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(top = 8.dp).press({ Clip.read(ctx)?.let { free = it } }))
+            Text(I18n.t("클립보드 붙여넣기"), style = T.small.copy(color = C.Ink, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(top = 8.dp).press({ Clip.read(ctx)?.let { free = it } }))
         } else m.meta["answer"]?.let { Text("→ $it", style = T.small.copy(color = C.Ink2), modifier = Modifier.padding(top = 6.dp)) }
     }
 }
@@ -413,15 +443,15 @@ private fun AskCard(vm: MainVm, m: Msg) {
 private fun TakeoverCard(vm: MainVm, m: Msg) {
     val pending = m.meta["status"] == "pending"
     FoldCard(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) { SignalDot(if (pending) C.Red else C.Mute, 7.dp, pulse = pending); Spacer(Modifier.width(8.dp)); Label("직접 해 주세요", color = if (pending) C.Red else C.Mute) }
+        Row(verticalAlignment = Alignment.CenterVertically) { SignalDot(if (pending) C.Red else C.Mute, 7.dp, pulse = pending); Spacer(Modifier.width(8.dp)); Label(I18n.t("직접 해 주세요"), color = if (pending) C.Red else C.Mute) }
         Spacer(Modifier.height(6.dp)); MdText(m.text)
         if (pending) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val url = m.meta["url"].orEmpty()
-                if (url.isNotBlank()) GhostButton("열기") { vm.runner.openTakeover(url) } else GhostButton("조종석") { vm.go(Route.Cockpit) }
-                InkButton("다 했어요") { vm.answer(m.meta["pid"]!!, "완료") }
-                GhostButton("못 해요") { vm.answer(m.meta["pid"]!!, "사용자가 할 수 없음") }
+                if (url.isNotBlank()) GhostButton(I18n.t("열기")) { vm.runner.openTakeover(url) } else GhostButton(I18n.t("조종석")) { vm.go(Route.Cockpit) }
+                InkButton(I18n.t("다 했어요")) { vm.answer(m.meta["pid"]!!, "완료") }
+                GhostButton(I18n.t("못 해요")) { vm.answer(m.meta["pid"]!!, "사용자가 할 수 없음") }
             }
         }
     }
@@ -439,8 +469,8 @@ private fun FinalCard(vm: MainVm, m: Msg) {
         MdText(m.text)
         Spacer(Modifier.height(12.dp)); Hairline(); Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("복사", style = T.small.copy(color = C.Ink, fontWeight = FontWeight.SemiBold), modifier = Modifier.press({ Clip.copy(ctx, m.text, false) }))
-            m.meta["job"]?.let { jid -> Text("작업 보기", style = T.small.copy(color = C.Ink, fontWeight = FontWeight.SemiBold), modifier = Modifier.press({ vm.go(Route.Job(jid)) })) }
+            Text(I18n.t("복사"), style = T.small.copy(color = C.Ink, fontWeight = FontWeight.SemiBold), modifier = Modifier.press({ Clip.copy(ctx, m.text, false) }))
+            m.meta["job"]?.let { jid -> Text(I18n.t("작업 보기"), style = T.small.copy(color = C.Ink, fontWeight = FontWeight.SemiBold), modifier = Modifier.press({ vm.go(Route.Job(jid)) })) }
         }
     }
 }
@@ -451,7 +481,7 @@ private fun ArtifactRow(vm: MainVm, m: Msg) {
     val f = java.io.File(vm.store.jobDir(m.meta["job"] ?: "manual"), m.meta["file"] ?: "")
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(C.Paper2).press({ if (f.exists()) vm.openFile(ctx, f) }).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Ico(I.File, 20.dp); Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) { Label("결과물"); Text(m.meta["file"] ?: "", style = T.head.copy(fontSize = 14.sp)) }
+        Column(Modifier.weight(1f)) { Label(I18n.t("결과물")); Text(m.meta["file"] ?: "", style = T.head.copy(fontSize = 14.sp)) }
         Ico(I.Export, 18.dp)
     }
 }
@@ -460,8 +490,8 @@ private fun ArtifactRow(vm: MainVm, m: Msg) {
 private fun ScreenCard(m: Msg) {
     FoldCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(painterResource(R.drawable.mascot_idle), null, Modifier.size(54.dp)); Spacer(Modifier.width(10.dp))
-            Column { Label("화면 공유 요청", color = C.Red); Text(m.text, style = T.small.copy(color = C.Ink2)) }
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(C.Paper2), contentAlignment = Alignment.Center) { Ico(I.Eye, 20.dp) }; Spacer(Modifier.width(10.dp))
+            Column { Label(I18n.t("화면 공유 요청"), color = C.Red); Text(m.text, style = T.small.copy(color = C.Ink2)) }
         }
     }
 }
@@ -481,12 +511,12 @@ private fun ErrorRow(vm: MainVm, m: Msg) {
         val retry = via in setOf("OFFLINE", "NOT_READY", "RENDERER_GONE", "EXCEPTION", "TIMEOUT", "NONE") || via.startsWith("INPUT_")
         val copy = via == "CRASH"
         if (cockpit || retry || copy) Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (waiting) Label("로그인 기다리는 중", color = C.Red, modifier = Modifier.padding(vertical = 8.dp).weight(1f)) else Spacer(Modifier.weight(1f))
-            if (copy) ErrAction("복사") {
+            if (waiting) Label(I18n.t("로그인 기다리는 중"), color = C.Red, modifier = Modifier.padding(vertical = 8.dp).weight(1f)) else Spacer(Modifier.weight(1f))
+            if (copy) ErrAction(I18n.t("복사")) {
                 val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
                 cm?.setPrimaryClip(android.content.ClipData.newPlainText("HJTK crash", m.meta["detail"] ?: m.text))
             }
-            if (retry) ErrAction("다시 보내기") { vm.retryLast() }
+            if (retry) ErrAction(I18n.t("다시 보내기")) { vm.retryLast() }
             if (cockpit) ErrAction(if (via == "NEEDS_LOGIN") "로그인하기" else "조종석", strong = true) { vm.go(Route.Cockpit) }
         }
     }
@@ -591,6 +621,7 @@ private fun Composer(vm: MainVm, ime: Boolean) {
             }
             Hairline()
         }
+        if (mode == Mode.MISSION) DifficultyRow(vm)
         // 키보드가 닫혀 있을 때만 모드 칩 줄을 펼친다. 열리면 왼쪽 버튼 하나가 모드 전환을 맡는다(세로 44dp 절약).
         if (!ime) Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Mode.values().forEach { md -> Chip(md.label, mode == md) { vm.mode.value = md } }
@@ -609,7 +640,9 @@ private fun Composer(vm: MainVm, ime: Boolean) {
             } else Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, C.Hair, RoundedCornerShape(8.dp)).press({ vm.paletteOpen.value = true }), contentAlignment = Alignment.Center) { Ico(I.Slash, 20.dp) }
             Spacer(Modifier.width(8.dp))
             BasicTextField(text, { vm.draft.value = it }, textStyle = T.body, cursorBrush = SolidColor(C.Ink), maxLines = if (ime) 4 else 6,
-                modifier = Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp)).background(C.Paper2).padding(horizontal = 12.dp, vertical = 11.dp),
+                modifier = Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp)).background(C.Paper2).padding(horizontal = 12.dp, vertical = 11.dp)
+                    // 하드웨어 키보드(PC·태블릿): Enter 보내기 · Shift+Enter 줄바꿈
+                    .onPreviewKeyEvent { e -> if (e.key == androidx.compose.ui.input.key.Key.Enter && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && !e.isShiftPressed && text.isNotBlank()) { vm.send(text); true } else false },
                 decorationBox = { inner -> if (text.isEmpty()) Text(if (mode == Mode.MISSION) "맡길 일을 적어 주세요 — 오래 걸려도 괜찮아요" else "메시지 · / 로 명령어", style = T.body.copy(color = C.Mute), maxLines = 1, overflow = TextOverflow.Ellipsis); inner() })
             Spacer(Modifier.width(8.dp))
             Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(if (text.isBlank()) C.Paper3 else if (mode == Mode.MISSION) C.Red else C.Ink)

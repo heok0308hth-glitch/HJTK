@@ -203,13 +203,17 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
         w.onResume(); w.resumeTimers()
     }
 
+    // ── 발열: 쓰지 않는 동안 렌더링을 멈춘다(DeepSeek 페이지의 커서 깜빡임 같은 상시 그리기 차단) ──
+    private val pauseIdle = Runnable { if (cockpit?.get() == null && !mutex.isLocked) web?.onPause() }
+    private fun scheduleIdle() { main.removeCallbacks(pauseIdle); main.postDelayed(pauseIdle, if (Thermal.hot.value) 8_000L else 20_000L) }
+
     private fun moveTo(w: WebView, parent: ViewGroup) {
         if (w.parent !== parent) {
             (w.parent as? ViewGroup)?.removeView(w)
             if (parent !== parking) removeParking()
             parent.addView(w, FrameLayout.LayoutParams(-1, -1))
         }
-        w.onResume(); w.resumeTimers()
+        w.onResume(); w.resumeTimers(); scheduleIdle()
     }
 
     private fun overlayPark(w: WebView): Boolean {
@@ -255,6 +259,7 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
 
     /** 조종석 화면에 붙이기(사용자가 직접 보고 조작) */
     fun attach(container: FrameLayout) = onMain {
+        main.removeCallbacks(pauseIdle)
         cockpit = WeakReference(container)
         ensureWeb(); place()
         web?.let { w -> w.isFocusable = true; w.isFocusableInTouchMode = true }
@@ -324,12 +329,17 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
     }
 
     override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply = mutex.withLock {
+        ui { main.removeCallbacks(pauseIdle); web?.onResume() }
+        try { sendLocked(text, newSession) } finally { onMain { scheduleIdle() } }
+    }
+
+    private suspend fun sendLocked(text: String, newSession: Boolean): LlmReply {
         val t0 = System.currentTimeMillis()
         val r = attempt(text, newSession, t0)
-        if (r.via != VIA_GONE) return@withLock r.also { lastVia.value = it.via }
+        if (r.via != VIA_GONE) return r.also { lastVia.value = it.via }
         // 렌더러가 답하는 도중 죽었다: 질문은 이미 DeepSeek에 들어갔을 수 있다 → 다시 보내지 말고 대화방을 열어 답을 회수
         val back = recover(t0)
-        (back ?: LlmReply("", VIA_GONE, false, System.currentTimeMillis() - t0)).also { lastVia.value = it.via }
+        return (back ?: LlmReply("", VIA_GONE, false, System.currentTimeMillis() - t0)).also { lastVia.value = it.via }
     }
 
     private suspend fun attempt(text: String, newSession: Boolean, t0: Long): LlmReply {

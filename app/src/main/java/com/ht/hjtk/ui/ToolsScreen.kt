@@ -1,5 +1,6 @@
 package com.ht.hjtk.ui
 
+import com.ht.hjtk.core.I18n
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -84,10 +85,10 @@ fun CommandScreen(vm: MainVm, id: String) {
             Text(s.desc, style = T.body)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Label("효과 E${s.effect.level} · ${s.effect.label}", color = if (s.effect.needsApproval) C.Red else C.Mute)
-                Label("슬래시 /" + (s.aliases.firstOrNull() ?: s.id))
+                Label(I18n.t("슬래시 /") + (s.aliases.firstOrNull() ?: s.id))
             }
             Hairline(color = C.Ink)
-            if (s.params.isEmpty()) Text("인자 없이 바로 실행됩니다.", style = T.small)
+            if (s.params.isEmpty()) Text(I18n.t("인자 없이 바로 실행됩니다."), style = T.small)
             s.params.forEach { p ->
                 Column { Label(p.name + if (p.required) " *" else " (선택)", color = if (p.required) C.Ink else C.Mute); Spacer(Modifier.height(4.dp))
                     Field(vals[p.name] ?: "", { vals[p.name] = it }, p.desc, single = p.name !in listOf("text", "content", "body", "draft", "rows", "items", "pairs", "md", "csv", "json", "urls", "steps", "guide")) }
@@ -96,7 +97,7 @@ fun CommandScreen(vm: MainVm, id: String) {
             InkButton(if (missing.isEmpty()) "지금 실행" else "필수: ${missing.joinToString { it.name }}", Modifier.fillMaxWidth(), accent = s.effect.needsApproval) {
                 if (missing.isEmpty()) vm.runCommand(CommandCall("u", s.id, vals.toMap()))
             }
-            if (s.effect.needsApproval) Text("직접 실행은 당신의 손으로 누른 것이므로 승인 카드를 다시 띄우지 않습니다. AI가 이 명령을 쓸 때는 항상 '실행' 버튼으로 허락을 받습니다.", style = T.small.copy(fontSize = 12.sp))
+            if (s.effect.needsApproval) Text(I18n.t("직접 실행은 당신의 손으로 누른 것이므로 승인 카드를 다시 띄우지 않습니다. AI가 이 명령을 쓸 때는 항상 '실행' 버튼으로 허락을 받습니다."), style = T.small.copy(fontSize = 12.sp))
             Text("AI에게 맡길 때: \"${s.title}\"이 필요한 일을 자연어로 말하면 DeepSeek이 이 명령을 고릅니다.", style = T.small.copy(fontSize = 12.sp))
         }
     }
@@ -107,7 +108,7 @@ private fun PipelineList(vm: MainVm) {
     val ps by vm.store.pipelines.collectAsState()
     var runFor by remember { mutableStateOf<Pipeline?>(null) }; var input by remember { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Row(verticalAlignment = Alignment.CenterVertically) { Text("명령을 이어 붙인 나만의 자동화. 밖으로 나가는 단계 앞에는 승인 단계가 자동으로 들어갑니다.", style = T.small, modifier = Modifier.weight(1f)); Spacer(Modifier.width(10.dp)); InkButton("새로") { vm.go(Route.PipelineEdit(null)) } } }
+        item { Row(verticalAlignment = Alignment.CenterVertically) { Text(I18n.t("명령을 이어 붙인 나만의 자동화. 밖으로 나가는 단계 앞에는 승인 단계가 자동으로 들어갑니다."), style = T.small, modifier = Modifier.weight(1f)); Spacer(Modifier.width(10.dp)); InkButton(I18n.t("새로")) { vm.go(Route.PipelineEdit(null)) } } }
         items(ps, key = { it.id }) { p ->
             val comp = remember(p) { PipelineCompiler.compile(p) }
             FoldCard(Modifier.fillMaxWidth()) {
@@ -120,8 +121,8 @@ private fun PipelineList(vm: MainVm) {
                 if (runFor == p) {
                     Field(input, { input = it }, "{input}에 들어갈 값 (예: 디자인)")
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { InkButton("작업으로 실행", accent = true) { vm.runPipeline(p, input); runFor = null; input = "" }; GhostButton("취소") { runFor = null } }
-                } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { InkButton("실행") { runFor = p }; GhostButton("편집") { vm.go(Route.PipelineEdit(p.id)) } }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { InkButton(I18n.t("작업으로 실행"), accent = true) { vm.runPipeline(p, input); runFor = null; input = "" }; GhostButton(I18n.t("취소")) { runFor = null } }
+                } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { InkButton(I18n.t("실행")) { runFor = p }; GhostButton(I18n.t("편집")) { vm.go(Route.PipelineEdit(p.id)) } }
             }
         }
     }
@@ -139,20 +140,20 @@ fun PipelineEditScreen(vm: MainVm, id: String?) {
         TopBar(if (orig == null) "새 파이프라인" else "파이프라인 편집", "한 줄에 한 단계", onBack = { vm.back() })
         Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Field(name, { name = it }, "이름"); Field(desc, { desc = it }, "설명")
-            Label("단계 — 명령 key=value · ai: 지시 · approve 질문 · {input} {prev} {today}")
+            Label(I18n.t("단계 — 명령 key=value · ai: 지시 · approve 질문 · {input} {prev} {today}"))
             Field(text, { text = it }, "web.search q={input}", single = false, modifier = Modifier.heightIn(min = 160.dp))
-            Label("컴파일 결과")
+            Label(I18n.t("컴파일 결과"))
             comp.steps.forEachIndexed { i, s -> Text("%02d  ".format(i + 1) + (if (s.kind == "cmd") s.cmd else s.kind) + "  " + (if (s.kind == "cmd") s.args.toString() else s.prompt), style = T.mono.copy(fontSize = 11.5.sp, color = if (s.kind == "approval") C.Red else C.Ink3)) }
             if (comp.insertedApprovals > 0) Text("밖으로 나가는 단계 앞에 승인 ${comp.insertedApprovals}개를 자동으로 넣었어요.", style = T.small.copy(color = C.Red))
             comp.issues.forEach { Text("· $it", style = T.small.copy(color = C.Graphite)) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InkButton("저장") {
+                InkButton(I18n.t("저장")) {
                     if (name.isNotBlank() && steps.isNotEmpty()) {
                         val p = Pipeline(orig?.id ?: vm.store.id("p"), name, desc, steps)
                         vm.store.pipelines.value = vm.store.pipelines.value.filter { it.id != p.id } + p; vm.store.persistHub(); vm.back()
                     }
                 }
-                if (orig != null) GhostButton("삭제") { vm.store.pipelines.value = vm.store.pipelines.value.filter { it.id != orig.id }; vm.store.persistHub(); vm.back() }
+                if (orig != null) GhostButton(I18n.t("삭제")) { vm.store.pipelines.value = vm.store.pipelines.value.filter { it.id != orig.id }; vm.store.persistHub(); vm.back() }
             }
         }
     }
@@ -165,10 +166,10 @@ private fun SkillList(vm: MainVm) {
     var n by remember { mutableStateOf("") }; var w by remember { mutableStateOf("") }; var g by remember { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("스킬은 코드가 아니라 '지침'입니다. 작업을 시작할 때 AI에게 건네지고, AI가 skill.use로 꺼내 읽습니다. AI가 새 스킬을 제안하면 당신이 저장 여부를 정합니다.", style = T.small, modifier = Modifier.weight(1f)); Spacer(Modifier.width(10.dp)); InkButton(if (add) "닫기" else "만들기") { add = !add } }
+            Row(verticalAlignment = Alignment.CenterVertically) { Text(I18n.t("스킬은 코드가 아니라 '지침'입니다. 작업을 시작할 때 AI에게 건네지고, AI가 skill.use로 꺼내 읽습니다. AI가 새 스킬을 제안하면 당신이 저장 여부를 정합니다."), style = T.small, modifier = Modifier.weight(1f)); Spacer(Modifier.width(10.dp)); InkButton(if (add) "닫기" else "만들기") { add = !add } }
             if (add) Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Field(n, { n = it }, "이름 (예: 포트폴리오 정리)"); Field(w, { w = it }, "언제 쓰나"); Field(g, { g = it }, "지침 — 순서·기준·금지사항", single = false, modifier = Modifier.heightIn(min = 120.dp))
-                InkButton("저장") { if (n.isNotBlank() && g.isNotBlank()) { vm.store.skills.value = vm.store.skills.value + Skill(vm.store.id("sk"), n, w, g); vm.store.persistHub(); n = ""; w = ""; g = ""; add = false } }
+                InkButton(I18n.t("저장")) { if (n.isNotBlank() && g.isNotBlank()) { vm.store.skills.value = vm.store.skills.value + Skill(vm.store.id("sk"), n, w, g); vm.store.persistHub(); n = ""; w = ""; g = ""; add = false } }
             }
         }
         items(Skill.BUILT_IN + custom, key = { it.id }) { s ->
@@ -178,8 +179,8 @@ private fun SkillList(vm: MainVm) {
                 Spacer(Modifier.height(6.dp)); Text(s.guide, style = T.small.copy(color = C.Ink2, fontSize = 12.5.sp), maxLines = 4, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    InkButton("이 스킬로 작업") { vm.draft.value = "[${s.name}] "; vm.mode.value = Mode.MISSION; vm.tab(Route.Chat) }
-                    if (!s.builtIn) GhostButton("삭제") { vm.store.skills.value = vm.store.skills.value.filter { it.id != s.id }; vm.store.persistHub() }
+                    InkButton(I18n.t("이 스킬로 작업")) { vm.draft.value = "[${s.name}] "; vm.mode.value = Mode.MISSION; vm.tab(Route.Chat) }
+                    if (!s.builtIn) GhostButton(I18n.t("삭제")) { vm.store.skills.value = vm.store.skills.value.filter { it.id != s.id }; vm.store.persistHub() }
                 }
             }
         }

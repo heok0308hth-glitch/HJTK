@@ -30,7 +30,7 @@ class ScreensTest {
         Motion.enabled = false
         val h = Hjtk.get(ApplicationProvider.getApplicationContext())
         val st = h.store
-        st.updateSettings { it.copy(onboarded = true, userName = "허태혁") }
+        st.updateSettings { it.copy(lang = "ko", onboarded = true, userName = "허태혁") }
         vm = MainVm(h)
         val c = st.newConversation("2026 디자인 공모전 준비"); vm.convId.value = c.id
         st.msg(c.id, Role.USER, "디자인 공모전 찾아서 준비해줘. 무료이고 12월 안에 마감되는 걸로.", meta = mapOf("mission" to "true"))
@@ -86,7 +86,6 @@ class ScreensTest {
         vm.store.msg(c.id, Role.SYSTEM, "지난번 앱이 예기치 않게 종료됐어요. 같은 문제가 반복되면 아래 내용을 복사해 알려 주세요.\nIllegalStateException: example", "error", mapOf("via" to "CRASH", "detail" to "trace"))
         shot("14_errors") { HjtkApp(vm) }
     }
-    @Test fun s15_pet() { vm.go(Route.Pet); shot("15_pet") { HjtkApp(vm) } }
     @Test fun s16_foundry() {
         val c = vm.store.newConversation("전시회 추천"); vm.convId.value = c.id
         val st = vm.store
@@ -102,5 +101,15 @@ class ScreensTest {
             0.82, "약 1~2분", "결과물 검증", "검토 의견 반영(1회)", "[]", "P0_STREAM", "", "검증", 0, 2))
         shot("16_foundry") { HjtkApp(vm) }
     }
+    @Test fun s17_picker() { vm.pickerOpen.value = true; shot("17_picker") { HjtkApp(vm) } }
+    @Test fun s18_ai_settings() { vm.go(Route.Ai); shot("18_ai_settings") { HjtkApp(vm) } }
+    @Test fun s19_accounts() { vm.go(Route.Accounts); shot("19_accounts") { HjtkApp(vm) } }
+    @Test fun s20_phone() { vm.go(Route.Phone); shot("20_phone") { HjtkApp(vm) } }
+    @Test fun s21_live() { vm.go(Route.Live); shot("21_live") { HjtkApp(vm) } }
+    @Test fun s22_pc() { vm.go(Route.Pc); shot("22_pc") { HjtkApp(vm) } }
+    @Test fun s23_language() { vm.store.updateSettings { it.copy(lang = "") }; shot("23_language") { HjtkApp(vm) } }
+    @Config(sdk = [34], qualifiers = "w1100dp-h760dp-mdpi")
+    @Test fun s24_wide() { shot("24_wide") { HjtkApp(vm) } }
+    @Test fun s25_english() { vm.store.updateSettings { it.copy(lang = "en") }; vm.go(Route.Hub); shot("25_english_hub") { HjtkApp(vm) } }
     @Test fun s12_cockpit() { vm.go(Route.Cockpit); shot("12_cockpit") { HjtkApp(vm) } }
 }

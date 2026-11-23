@@ -1,5 +1,6 @@
 package com.ht.hjtk.ui
 
+import com.ht.hjtk.core.I18n
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -30,9 +31,14 @@ fun HjtkApp(vm: MainVm) {
     val palette by vm.paletteOpen.collectAsState()
     val pending by vm.runner.pending.collectAsState()
     BackHandler(enabled = palette || route !in listOf(Route.Chat)) {
-        if (palette) vm.paletteOpen.value = false else if (!vm.back()) vm.tab(Route.Chat)
+        if (vm.pickerOpen.value) vm.pickerOpen.value = false else if (palette) vm.paletteOpen.value = false else if (!vm.back()) vm.tab(Route.Chat)
     }
+    val settings by vm.store.settings.collectAsState()
     HjtkTheme {
+        // 첫 실행: 언어부터
+        if (settings.lang.isBlank()) { LanguageScreen { en -> I18n.en = en; vm.store.updateSettings { it.copy(lang = if (en) "en" else "ko") } }; return@HjtkTheme }
+        I18n.en = settings.lang == "en"
+        key(settings.lang) {
         Box(Modifier.fillMaxSize().background(C.Paper)) {
             val tabbed = route in listOf(Route.Chat, Route.Tasks, Route.Hub, Route.Tools)
             val ime = imeOpen()
@@ -40,7 +46,14 @@ fun HjtkApp(vm: MainVm) {
             Column(Modifier.fillMaxSize().imePadding()) {
                 Box(Modifier.weight(1f)) {
                     when (val r = route) {
-                        Route.Chat -> ChatScreen(vm)
+                        Route.Chat -> androidx.compose.foundation.layout.BoxWithConstraints {
+                            // 넓은 화면(태블릿·크롬북·PC 창): 대화 목록을 옆에 고정
+                            if (maxWidth >= 840.dp) Row(Modifier.fillMaxSize()) {
+                                Box(Modifier.width(320.dp).fillMaxHeight()) { ConversationsScreen(vm) }
+                                Box(Modifier.width(1.dp).fillMaxHeight().background(C.Hair))
+                                Box(Modifier.weight(1f)) { ChatScreen(vm) }
+                            } else ChatScreen(vm)
+                        }
                         Route.Tasks -> TasksScreen(vm)
                         Route.Hub -> HubScreen(vm)
                         Route.Tools -> ToolsScreen(vm)
@@ -50,7 +63,12 @@ fun HjtkApp(vm: MainVm) {
                         Route.Onboarding -> Onboarding(vm)
                         Route.Memory -> MemoryScreen(vm)
                         Route.MailAdd -> MailAddScreen(vm)
-                        Route.Pet -> PetScreen(vm)
+                        Route.Ai -> AiSettingsScreen(vm)
+                        Route.Accounts -> AccountsScreen(vm)
+                        Route.Browser -> BrowserScreen(vm)
+                        Route.Phone -> PhoneScreen(vm)
+                        Route.Live -> LiveScreen(vm)
+                        Route.Pc -> PcScreen(vm)
                         is Route.Job -> JobScreen(vm, r.id)
                         is Route.Command -> CommandScreen(vm, r.id)
                         is Route.PipelineEdit -> PipelineEditScreen(vm, r.id)
@@ -63,6 +81,8 @@ fun HjtkApp(vm: MainVm) {
                 }
             }
             if (palette) Palette(vm)
+            ModelPickerSheet(vm)
+        }
         }
     }
 }
@@ -74,7 +94,7 @@ private fun BottomBar(vm: MainVm, route: Route, pending: Int) {
     Column(Modifier.fillMaxWidth().background(C.Paper).navigationBarsPadding()) {
         Hairline()
         Row(Modifier.fillMaxWidth().height(58.dp)) {
-            tabs.forEach { (r, ic, l) ->
+            tabs.forEach { (r, ic, l0) -> val l = I18n.t(l0)
                 val on = r == route
                 Column(Modifier.weight(1f).fillMaxHeight().press({ vm.tab(r) }), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Box { Ico(ic, 22.dp, if (on) C.Ink else C.Mute); if (r == Route.Tasks && pending > 0) Box(Modifier.align(Alignment.TopEnd).offset(4.dp, (-2).dp)) { SignalDot(C.Red, 7.dp) } }
@@ -92,7 +112,7 @@ private fun BottomBar(vm: MainVm, route: Route, pending: Int) {
 @Composable
 private fun BottomBarSlim(vm: MainVm, pending: Int) {
     Row(Modifier.fillMaxWidth().background(C.Ink).navigationBarsPadding().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
-        tabs.forEach { (r, ic, l) ->
+        tabs.forEach { (r, ic, l0) -> val l = I18n.t(l0)
             Row(Modifier.weight(1f).fillMaxHeight().press({ vm.tab(r) }), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Ico(ic, 16.dp, if (r == Route.Chat) C.OnInk else C.OnInkMute); Spacer(Modifier.width(6.dp))
                 Text(l, style = T.label.copy(fontSize = 10.5.sp, color = if (r == Route.Chat) C.OnInk else C.OnInkMute, letterSpacing = 0.6.sp))
@@ -113,10 +133,10 @@ fun Onboarding(vm: MainVm) {
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.hjtk_mark_ink), null, Modifier.size(34.dp)); Spacer(Modifier.width(10.dp)); Label("HJTK · ${step + 1}/3", color = C.Ink)
-            Spacer(Modifier.weight(1f)); Text("건너뛰기", style = T.small.copy(color = C.Graphite), modifier = Modifier.press({ vm.completeOnboarding() }).padding(8.dp))
+            Spacer(Modifier.weight(1f)); Text(I18n.t("건너뛰기"), style = T.small.copy(color = C.Graphite), modifier = Modifier.press({ vm.completeOnboarding() }).padding(8.dp))
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
-            Image(painterResource(when (step) { 0 -> R.drawable.mascot_wave; 1 -> R.drawable.mascot_sit; else -> R.drawable.mascot_idle }), null, Modifier.size(150.dp))
+            Text("0${step + 1}", style = T.display.copy(color = C.Red))
             Spacer(Modifier.height(10.dp))
             key(tick) {
             when (step) {
@@ -125,31 +145,31 @@ fun Onboarding(vm: MainVm) {
                     Spacer(Modifier.height(12.dp))
                     Text("HJTK는 폰의 DeepSeek에게 일을 맡기고, 명령어 ${CommandCatalog.ALL.size}개로 실행하고, Gemini에게 교차 검토를 받고, 5분마다 보고합니다. 중요한 일은 '실행' 버튼으로 허락받아요.", style = T.body.copy(color = C.Graphite))
                     Spacer(Modifier.height(20.dp)); Hairline(color = C.Ink)
-                    NumRow(1, "DeepSeek 연결", if (ds == DeepSeekWeb.Status.READY) "로그인됨 — 키 없이 연결됐어요" else "조종석에서 한 번만 로그인(API 키 불필요)", dot = if (ds == DeepSeekWeb.Status.READY) C.Ink else C.Red, onClick = { vm.go(Route.Cockpit) })
+                    NumRow(1, I18n.t("DeepSeek 연결"), if (ds == DeepSeekWeb.Status.READY) "로그인됨 — 키 없이 연결됐어요" else "조종석에서 한 번만 로그인(API 키 불필요)", dot = if (ds == DeepSeekWeb.Status.READY) C.Ink else C.Red, onClick = { vm.go(Route.Cockpit) })
                 }
                 1 -> {
                     Text("일하는 동안\n곁에 있을게요.", style = T.display)
                     Spacer(Modifier.height(12.dp))
-                    Text("앱을 나가 있어도 작업은 계속되고, 쥬티가 화면을 돌아다니며 보고를 전해요. 아래를 허용하면 더 매끄러워요(모두 나중에 바꿀 수 있음).", style = T.body.copy(color = C.Graphite))
+                    Text(I18n.t("앱을 나가 있어도 작업은 계속되고, 5분마다 알림으로 보고를 전해요. 아래를 허용하면 더 매끄러워요(모두 나중에 바꿀 수 있음)."), style = T.body.copy(color = C.Graphite))
                     Spacer(Modifier.height(20.dp)); Hairline(color = C.Ink)
-                    NumRow(1, "알림", "5분 보고와 허락 요청", dot = if (Build.VERSION.SDK_INT < 33 || Perms.granted(ctx, Manifest.permission.POST_NOTIFICATIONS)) C.Ink else C.Red,
+                    NumRow(1, I18n.t("알림"), "5분 보고와 허락 요청", dot = if (Build.VERSION.SDK_INT < 33 || Perms.granted(ctx, Manifest.permission.POST_NOTIFICATIONS)) C.Ink else C.Red,
                         onClick = { if (Build.VERSION.SDK_INT >= 33) perm.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) }); Hairline()
-                    NumRow(2, "다른 앱 위에 표시", "쥬티 + 백그라운드 진행 안정화", dot = if (Perms.overlay(ctx)) C.Ink else C.Red, onClick = { ctx.startActivity(Perms.overlayIntent(ctx)) }); Hairline()
-                    NumRow(3, "캘린더 · 연락처 (선택)", "구글 캘린더를 OAuth 없이 기기 동기화로", dot = if (Perms.granted(ctx, Manifest.permission.READ_CALENDAR)) C.Ink else C.Hair,
+                    NumRow(2, I18n.t("다른 앱 위에 표시"), "백그라운드 진행 안정화", dot = if (Perms.overlay(ctx)) C.Ink else C.Red, onClick = { ctx.startActivity(Perms.overlayIntent(ctx)) }); Hairline()
+                    NumRow(3, I18n.t("캘린더 · 연락처 (선택)"), "구글 캘린더를 OAuth 없이 기기 동기화로", dot = if (Perms.granted(ctx, Manifest.permission.READ_CALENDAR)) C.Ink else C.Hair,
                         onClick = { perm.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR, Manifest.permission.READ_CONTACTS)) }); Hairline()
-                    if (com.ht.hjtk.engine.Caps.a11y) NumRow(4, "화면 읽기 (선택)", "Gemini 답 자동 회수 · 화면 공유 도움", dot = C.Hair, onClick = { ctx.startActivity(Perms.a11yIntent()) })
+                    if (com.ht.hjtk.engine.Caps.a11y) NumRow(4, I18n.t("화면 읽기 (선택)"), "Gemini 답 자동 회수 · 화면 공유 도움", dot = C.Hair, onClick = { ctx.startActivity(Perms.a11yIntent()) })
                 }
                 else -> {
                     Text("어떻게\n불러 드릴까요?", style = T.display)
                     Spacer(Modifier.height(18.dp))
                     Field(name, { name = it }, "이름"); Spacer(Modifier.height(8.dp)); Field(city, { city = it }, "사는 곳")
-                    Spacer(Modifier.height(8.dp)); Text("날씨·장소의 기본값과 결과물 표기에만 씁니다. 기기 밖으로 나가지 않아요.", style = T.small)
+                    Spacer(Modifier.height(8.dp)); Text(I18n.t("날씨·장소의 기본값과 결과물 표기에만 씁니다. 기기 밖으로 나가지 않아요."), style = T.small)
                 }
             }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (step > 0) GhostButton("이전") { step-- }
+            if (step > 0) GhostButton(I18n.t("이전")) { step-- }
             InkButton(if (step < 2) "다음" else "시작하기", Modifier.weight(1f), accent = step == 2) {
                 if (step < 2) step++ else { vm.store.updateSettings { it.copy(userName = name, homeCity = city.ifBlank { "서울" }) }; vm.completeOnboarding() }
             }
