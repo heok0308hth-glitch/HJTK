@@ -1,6 +1,7 @@
 <p align="center"><img src="docs/hero.png" alt="HJTK — AI 팀을 지휘하는 개인 비서" width="100%"></p>
 
 <p align="center">
+  <a href="https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml"><img src="https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml/badge.svg" alt="Android CI"></a>
   <img src="https://img.shields.io/badge/version-3.4.0-E44D2E?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/Android-9%2B-0E0E0E?style=flat-square&logo=android" alt="android">
   <img src="https://img.shields.io/badge/Kotlin-2.1-0E0E0E?style=flat-square&logo=kotlin" alt="kotlin">
@@ -150,6 +151,8 @@ Kotlin 약 15,000줄 · 모듈 3개 · 명령어 150개 이상.
 ./gradlew :app:testDebugUnitTest :voicecore:test     # 단위·화면 테스트
 ./gradlew :app:assembleRelease                       # 릴리스 APK
 ```
+
+GitHub Actions가 푸시마다 같은 테스트를 돌리고 디버그 APK를 만들어 둡니다(Actions → 실행 → Artifacts).
 
 릴리스 서명: `keystore/hjtk-release.jks`를 두고 `HJTK_KS_PASS` 환경 변수 또는 `keystore/keystore.properties`(`password=…`)를 설정하세요. 둘 다 저장소에 올리지 않습니다. 없으면 서명 없이 빌드됩니다.
 
