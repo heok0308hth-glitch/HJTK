@@ -37,6 +37,12 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: DeepSeek stream hook test (tap.js)
+        run: node tools/tap-test.js app/src/main/assets/tap.js
+
+      - name: Review gate (no on-device LLM, no web-API reimplementation, no TODOs)
+        run: bash tools/review-gate.sh app/src/main
+
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest :voicecore:test --no-daemon --stacktrace
 
@@ -50,6 +56,15 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload rendered screens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-screens
+          path: app/build/screens/*.png
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload test report
         if: always()
