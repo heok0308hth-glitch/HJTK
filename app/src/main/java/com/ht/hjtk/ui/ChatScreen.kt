@@ -2,6 +2,9 @@ package com.ht.hjtk.ui
 
 import com.ht.hjtk.core.I18n
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -130,7 +133,7 @@ private fun Thinking(vm: MainVm, cid: String) {
     var sec by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) { if (!Motion.test) while (true) { delay(1000); sec++ } }
     val lines by LiveBus.lines.collectAsState()
-    val line = lines[cid]
+    val line = LiveBus.of(cid, lines)
     val text = line?.text?.let { remember(it) { com.ht.hjtk.core.stream.AepView.clean(it) } } ?: ""
     Column(Modifier.fillMaxWidth().padding(end = 24.dp, top = 2.dp, bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -199,11 +202,13 @@ private fun SignalPanel(vm: MainVm, j: JobRec) {
             else Text(I18n.t("펼치기"), style = T.small.copy(color = C.OnInk, fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(start = 8.dp))
         }
         // 지금 AI가 쓰고 있는 글(접혀 있어도 보인다 — 클로드처럼 진행이 눈에 보이게)
-        LiveWriting(j.id, dark = true)
+        // 3.3: 센터와 팀원이 '누가 · 무엇을 · 지금 쓰는 글'을 보여 주는 무대(지휘자 작업). 옛 작업은 한 줄 미리보기
+        val stages by com.ht.hjtk.core.agent.StageBus.stages.collectAsState()
+        if (stages.containsKey(j.id)) StageView(j.id, dark = true, compact = !open) else LiveWriting(j.id, dark = true)
         AnimatedVisibility(open) {
             Column(Modifier.padding(top = 10.dp)) {
                 val liveAll by LiveBus.lines.collectAsState()
-                if (j.team.isNotBlank()) { CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides C.OnInk) { TeamBoardDark(j.team, j.tokens, liveAll, j.id) }; Spacer(Modifier.height(8.dp)) }
+                if (j.team.isNotBlank() && !stages.containsKey(j.id)) { CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides C.OnInk) { TeamBoardDark(j.team, j.tokens, liveAll, j.id) }; Spacer(Modifier.height(8.dp)) }
                 if (j.now.isNotBlank()) KV(I18n.t("지금"), j.now)
                 if (j.next.isNotBlank()) KV(I18n.t("다음"), j.next)
                 KV(I18n.t("남은 시간"), j.eta.ifBlank { "계획을 세우는 중" })
@@ -648,38 +653,65 @@ private fun Composer(vm: MainVm, ime: Boolean) {
             }
         }
         if (mode == Mode.MISSION) DifficultyRow(vm)
-        // 키보드가 닫혀 있을 때만 모드 칩 줄을 펼친다. 열리면 왼쪽 버튼 하나가 모드 전환을 맡는다(세로 44dp 절약).
-        if (!ime) Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Mode.values().forEach { md -> Chip(md.label, mode == md) { vm.mode.value = md } }
-            Spacer(Modifier.weight(1f))
-            if (mode == Mode.AUTO && text.isNotBlank()) Label(if (com.ht.hjtk.core.InputRouter.looksLikeMission(text)) "→ 작업으로" else "→ 대화로", color = C.Graphite)
+        // 3.3: 클로드 앱처럼 — 위는 글, 아래 줄은 [+] [모델 칩] … [모드] [보내기]. 키보드가 열려도 같은 모양이라 손이 헷갈리지 않는다
+        var plus by remember { mutableStateOf(false) }
+        val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { u -> u?.let { vm.attachImage(it) } }
+        AnimatedVisibility(plus) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PlusItem(I.Image, "사진") { plus = false; pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                PlusItem(I.Slash, "명령어") { plus = false; vm.paletteOpen.value = true }
+                PlusItem(null, "@함께") { plus = false; vm.draft.value = "@함께 " }
+                PlusItem(null, "@제미나이") { plus = false; vm.draft.value = "@제미나이 " }
+            }
         }
-        Row(Modifier.padding(start = 12.dp, end = 12.dp, top = if (ime) 8.dp else 12.dp, bottom = if (ime) 8.dp else 12.dp), verticalAlignment = Alignment.Bottom) {
-            if (ime) {
-                val auto = if (mode == Mode.AUTO && text.isNotBlank()) (if (com.ht.hjtk.core.InputRouter.looksLikeMission(text)) "작업" else "대화") else null
-                Column(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, if (mode == Mode.MISSION) C.Red else C.Hair, RoundedCornerShape(8.dp))
-                    .press({ haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); vm.mode.value = Mode.values()[(mode.ordinal + 1) % Mode.values().size] }),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Text(when (mode) { Mode.AUTO -> "자동"; Mode.QUICK -> "대화"; Mode.MISSION -> "작업" }, style = T.small.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (mode == Mode.MISSION) C.Red else C.Ink))
-                    if (auto != null) Text("→$auto", style = T.label.copy(fontFamily = Pretendard, fontSize = 9.sp, letterSpacing = 0.sp, color = C.Mute))
-                }
-            } else Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, C.Hair, RoundedCornerShape(8.dp)).press({ vm.paletteOpen.value = true }), contentAlignment = Alignment.Center) { Ico(I.Slash, 20.dp) }
-            Spacer(Modifier.width(8.dp))
+        Column(Modifier.padding(horizontal = 12.dp, vertical = if (ime) 6.dp else 10.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.Paper2)
+            .border(1.dp, if (mode == Mode.MISSION) C.Red.copy(alpha = 0.55f) else C.Hair, RoundedCornerShape(16.dp))) {
             BasicTextField(text, { vm.draft.value = it }, textStyle = T.body, cursorBrush = SolidColor(C.Ink), maxLines = if (ime) 4 else 6,
-                modifier = Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp)).background(C.Paper2).padding(horizontal = 12.dp, vertical = 11.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 4.dp)
                     // 하드웨어 키보드(PC·태블릿): Enter 보내기 · Shift+Enter 줄바꿈
                     .onPreviewKeyEvent { e -> if (e.key == androidx.compose.ui.input.key.Key.Enter && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && !e.isShiftPressed && text.isNotBlank()) { vm.send(text); true } else false },
                 decorationBox = { inner -> if (text.isEmpty()) Text(if (mode == Mode.MISSION) "맡길 일을 적어 주세요 — 오래 걸려도 괜찮아요" else "메시지 · / 로 명령어", style = T.body.copy(color = C.Mute), maxLines = 1, overflow = TextOverflow.Ellipsis); inner() })
-            Spacer(Modifier.width(6.dp))
-            val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { u -> u?.let { vm.attachImage(it) } }
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).press({ pick.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }), contentAlignment = Alignment.Center) { Ico(I.Image, 21.dp) }
-            Spacer(Modifier.width(4.dp))
-            val ready = text.isNotBlank() || pimg != null
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(if (!ready) C.Paper3 else if (mode == Mode.MISSION) C.Red else C.Ink)
-                .press({ haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.send(text) }, enabled = ready), contentAlignment = Alignment.Center) {
-                Ico(I.Send, 20.dp, if (!ready) C.Mute else C.OnInk)
+            Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                val rot by animateFloatAsState(if (plus) 45f else 0f, label = "plus")
+                Box(Modifier.size(38.dp).clip(CircleShape).press({ plus = !plus }), contentAlignment = Alignment.Center) { Ico(I.Plus, 21.dp, modifier = Modifier.graphicsLayer { rotationZ = rot }) }
+                ModelChip(vm)
+                Spacer(Modifier.weight(1f))
+                val auto = if (mode == Mode.AUTO && text.isNotBlank()) (if (com.ht.hjtk.core.InputRouter.looksLikeMission(text)) "작업" else "대화") else null
+                Text(when (mode) { Mode.AUTO -> if (auto != null) "자동→$auto" else "자동"; Mode.QUICK -> "대화"; Mode.MISSION -> "작업" },
+                    style = T.small.copy(fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, color = if (mode == Mode.MISSION) C.Red else C.Graphite),
+                    modifier = Modifier.clip(RoundedCornerShape(50)).press({ haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); vm.mode.value = Mode.values()[(mode.ordinal + 1) % Mode.values().size] }).padding(horizontal = 10.dp, vertical = 8.dp))
+                val ready = text.isNotBlank() || pimg != null
+                Box(Modifier.size(36.dp).clip(CircleShape).background(if (!ready) C.Paper3 else if (mode == Mode.MISSION) C.Red else C.Ink)
+                    .press({ haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.send(text) }, enabled = ready), contentAlignment = Alignment.Center) {
+                    Ico(I.Send, 18.dp, if (!ready) C.Mute else C.OnInk)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun PlusItem(icon: I?, label: String, onClick: () -> Unit) {
+    Row(Modifier.clip(RoundedCornerShape(50)).border(1.dp, C.Hair, RoundedCornerShape(50)).press(onClick).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        icon?.let { Ico(it, 15.dp, C.Graphite); Spacer(Modifier.width(6.dp)) }
+        Text(label, style = T.small.copy(fontSize = 12.5.sp, color = if (icon == null) C.Red else C.Ink, fontWeight = FontWeight.SemiBold))
+    }
+}
+
+/** + 옆 모델 칩: "Claude Sonnet · 높음" / "자동 · DeepSeek". 누르면 회사→모델→노력 고르기 판 */
+@Composable
+internal fun ModelChip(vm: MainVm) {
+    val aiSt by vm.h.ai.state.collectAsState()
+    val style by com.ht.hjtk.engine.ChatStyle.state.collectAsState()
+    val loggedIn by com.ht.hjtk.engine.WebAiHub.loggedIn.collectAsState()
+    val a = remember(aiSt, loggedIn) { vm.h.ai.chatAssignment() }
+    val auto = aiSt.chatPin == "auto"
+    val name = (a?.name ?: "DeepSeek").replace(Regex("""\s*\(.*?\)"""), "").replace(" · 웹", "").replace(" · API", "").let { if (it.length > 18) it.take(17) + "…" else it }
+    val tint = a?.member?.provider?.name?.let { providerTint(it) } ?: C.Red
+    Row(Modifier.clip(RoundedCornerShape(50)).press({ vm.pickerOpen.value = true }).padding(start = 8.dp, end = 10.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(tint)); Spacer(Modifier.width(7.dp))
+        Text(if (auto) "자동 · $name" else "$name · ${com.ht.hjtk.engine.ChatStyle.EFFORT[style.effort]}", style = T.small.copy(fontSize = 12.5.sp, color = C.Ink, fontWeight = FontWeight.Medium), maxLines = 1)
+        Spacer(Modifier.width(3.dp)); Ico(I.Down, 12.dp, C.Graphite)
     }
 }
 

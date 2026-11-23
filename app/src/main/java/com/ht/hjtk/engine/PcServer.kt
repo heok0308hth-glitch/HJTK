@@ -112,7 +112,7 @@ class PcServer(private val h: Hjtk) {
         val cid = convId?.takeIf { id -> convs.any { it.id == id } } ?: convs.firstOrNull()?.id
         cid?.let { h.store.ensureLoaded(it) }
         val msgs = cid?.let { h.store.messages.value[it] }.orEmpty().takeLast(120)
-        val live = cid?.let { LiveBus.lines.value[it] }
+        val live = cid?.let { LiveBus.of(it) }
         val jobs = h.store.jobs.value.filter { it.running }.take(5)
         return JSONObject()
             .put("convs", JSONArray(convs.map { JSONObject().put("id", it.id).put("title", it.title).put("at", it.updatedAt) }))

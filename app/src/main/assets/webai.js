@@ -25,7 +25,14 @@
   }
   var api = {
     v: 3, cfg: cfg,
-    input: function () { return q(api.cfg.input); },
+    input: function () {
+      var el = q(api.cfg.input); if (el) return el;
+      // 사이트가 바뀌어 지정한 자리를 못 찾으면: 화면 아래쪽의 넓은 입력칸(채팅 입력창의 공통 모양)
+      var c = document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]');
+      var best = null, area = 0, vh = window.innerHeight || 800;
+      for (var i = 0; i < c.length; i++) { var r = c[i].getBoundingClientRect(); if (r.width < 150 || r.height < 18 || r.bottom < vh * 0.35) continue; var a = r.width * r.height; if (a > area) { area = a; best = c[i]; } }
+      return best;
+    },
     state: function () {
       if (document.readyState === 'loading') return 'LOADING';
       if (api.input()) return 'READY';

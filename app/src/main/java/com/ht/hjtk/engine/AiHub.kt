@@ -77,8 +77,11 @@ object UsageLog {
 object LiveBus {
     data class Line(val owner: String, val who: String, val text: String, val at: Long = System.currentTimeMillis())
     val lines = MutableStateFlow<Map<String, Line>>(emptyMap())
-    fun put(owner: String, who: String, text: String) = lines.update { it + (owner to Line(owner, who, text)) }
-    fun clear(owner: String) = lines.update { it - owner }
+    // 3.3: 여러 AI가 같은 작업에서 동시에 쓰므로 '작업|누가'마다 한 줄
+    fun put(owner: String, who: String, text: String) = lines.update { it + ("$owner|$who" to Line(owner, who, text)) }
+    fun clear(owner: String) = lines.update { m -> m.filterValues { it.owner != owner } }
+    fun clear(owner: String, who: String) = lines.update { it - "$owner|$who" }
+    fun of(owner: String, map: Map<String, Line> = lines.value): Line? = map.values.filter { it.owner == owner }.maxByOrNull { it.at }
 }
 
 class AiHub(private val ctx: Context, private val store: Store, private val bridge: ExternalAiBridge) {
@@ -227,7 +230,7 @@ class ApiPort(
             val now = System.currentTimeMillis()
             if (now - last > Thermal.liveIntervalMs) { last = now; LiveBus.put(o, name, acc) }
         }
-        LiveBus.clear(o)
+        LiveBus.clear(o, name)
         val tin = r.inTokens.takeIf { it > 0 } ?: Tokens.estimate(h.joinToString("") { it.second }); val tout = r.outTokens.takeIf { it > 0 } ?: Tokens.estimate(r.text)
         ledger?.add(name, tin, tout)
         UsageLog.add(name, tin, tout)

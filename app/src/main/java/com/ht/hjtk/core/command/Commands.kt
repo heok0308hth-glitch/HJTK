@@ -111,7 +111,7 @@ object CommandCatalog {
         c("mail.read", "메일 읽기", Category.MAIL, Effect.READ, "id*:메일ID|account:계정", "메일 본문", "메일읽기"),
         c("mail.unread", "안 읽은 수", Category.MAIL, Effect.READ, "account:계정", "안 읽은 메일 수", "안읽음"),
         c("mail.draft", "메일 초안", Category.MAIL, Effect.LOCAL, "to*:받는이|subject*:제목|body*:본문", "초안을 작업공간에 저장(발송 안 함)", "초안"),
-        c("mail.send", "메일 보내기", Category.MAIL, Effect.EXTERNAL, "to*:받는이|subject*:제목|body*:본문|account:계정", "SMTP로 실제 발송", "메일보내기"),
+        c("mail.send", "메일 보내기", Category.MAIL, Effect.EXTERNAL, "to*:받는이|subject*:제목|body*:본문|account:계정", "실제 발송 — 로그인한 구글 계정(Gmail)으로, 메일 계정이 연결돼 있으면 SMTP로", "메일보내기", "지메일", "gmail"),
         c("mail.reply", "메일 답장", Category.MAIL, Effect.EXTERNAL, "id*:원본ID|body*:본문|account:계정", "원본에 답장 발송", "답장"),
         c("mail.mark_read", "읽음 표시", Category.MAIL, Effect.LOCAL, "id*:메일ID|account:계정", "읽음으로 표시", "읽음"),
 

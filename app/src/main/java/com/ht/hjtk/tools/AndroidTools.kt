@@ -198,10 +198,23 @@ class AndroidTools(
             File(dir, name).writeText("받는이: ${c.arg("to")}\n제목: ${c.arg("subject")}\n\n${c.arg("body")}")
             CommandResult.ok("초안 저장: $name (발송하지 않음)", Artifact(name, "text/plain", ""))
         }
-        put("mail.send") { c -> mailDo(c) { a, pw ->
-            val r = MailClient.send(a, pw, c.arg("to"), c.arg("subject"), c.arg("body"))
-            store.knownRecipients.update { it + c.arg("to").lowercase() }; store.persistHub(); r
-        } }
+        put("mail.send") { c ->
+            // 3.3: SMTP 계정(앱 비밀번호)이 있으면 그걸로, 없거나 실패하면 '계정 하나로' 구글 세션으로 Gmail 웹에서 직접 보낸다
+            val smtp = store.mail.value.isNotEmpty() && store.mail.value.any { store.secrets.get("mail_${it.id}") != null }
+            val first = if (smtp) mailDo(c) { a, pw ->
+                val r = MailClient.send(a, pw, c.arg("to"), c.arg("subject"), c.arg("body"))
+                store.knownRecipients.update { it + c.arg("to").lowercase() }; store.persistHub(); r
+            } else null
+            if (first != null && first.ok) first
+            else {
+                val g = com.ht.hjtk.engine.GmailWeb.send(c.arg("to"), c.arg("subject"), c.arg("body"))
+                when (g.r) {
+                    com.ht.hjtk.engine.GmailWeb.R.SENT -> { store.knownRecipients.update { it + c.arg("to").lowercase() }; store.persistHub(); ok("${g.note} → ${c.arg("to")} · 제목 「${c.arg("subject")}」") }
+                    com.ht.hjtk.engine.GmailWeb.R.UNSURE -> ok(g.note)
+                    else -> fail(listOfNotNull(first?.text?.takeIf { it.isNotBlank() }, g.note).joinToString(" / "))
+                }
+            }
+        }
         put("mail.reply") { c -> mailDo(c) { a, pw ->
             val uid = c.arg("id").filter { it.isDigit() }.toLong()
             val orig = MailClient.read(a, pw, uid)

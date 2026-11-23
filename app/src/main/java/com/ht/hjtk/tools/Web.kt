@@ -94,7 +94,7 @@ object Search {
     suspend fun news(q: String, n: Int): List<Hit> = runCatching {
         val r = Http.get("https://news.google.com/rss/search?q=${enc(q)}&hl=ko&gl=KR&ceid=KR:ko")
         rss(r.body, n, "뉴스")
-    }.getOrDefault(emptyList())
+    }.getOrDefault(emptyList()).ifEmpty { browser("$q 뉴스", n) }
 
     fun rss(xml: String, n: Int, src: String): List<Hit> {
         val items = Regex("<(item|entry)>([\\s\\S]*?)</\\1>").findAll(xml).take(n).map { it.groupValues[2] }
@@ -119,10 +119,12 @@ object Search {
             async { if (naverKey != null) naverApi(q, "web", naverKey.first, naverKey.second, n) else naverHtml(q, n) },
             async { ddg(q, n).ifEmpty { bing(q, n) } }
         )
-        val all = jobs.awaitAll().flatten()
+        val all = jobs.awaitAll().flatten().ifEmpty { browser(q, n) }   // 다 막히면 보이지 않는 진짜 브라우저로
         val seen = HashSet<String>()
         all.filter { seen.add(it.url.substringBefore('#').trimEnd('/')) }.take(n * 2)
     }
+
+    suspend fun browser(q: String, n: Int): List<Hit> = runCatching { com.ht.hjtk.engine.Scout.search(q, n).map { Hit(it.title, it.url, it.snippet, "브라우저") } }.getOrDefault(emptyList())
 
     suspend fun site(site: String, q: String, n: Int): List<Hit> = ddg("site:$site $q", n).ifEmpty { bing("site:$site $q", n) }
 }

@@ -122,6 +122,7 @@ fun JobScreen(vm: MainVm, id: String) {
                 if (j.running || j.state == "SUSPENDED") GhostButton(I18n.t("중지")) { vm.runner.abort(id) }
                 if (!j.running) GhostButton(I18n.t("삭제")) { vm.store.deleteJob(id); vm.back() }
             }
+            StageView(id, dark = false)
             SectionHead("01", I18n.t("계획"))
             if (plan == null || plan.length() == 0) Text(I18n.t("아직 계획이 없어요"), style = T.small, modifier = Modifier.padding(vertical = 10.dp))
             else for (k in 0 until plan.length()) { val o = plan.getJSONObject(k)

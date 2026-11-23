@@ -52,7 +52,7 @@ fun LiveScreen(vm: MainVm) {
     val turns = remember { mutableStateListOf<Pair<Boolean, String>>() }
     val list = rememberLazyListState()
     val lines by LiveBus.lines.collectAsState()
-    val streaming = lines["live"]?.text.orEmpty()
+    val streaming = LiveBus.of("live", lines)?.text.orEmpty()
 
     var ttsReady by remember { mutableStateOf(false) }
     val tts = remember { arrayOfNulls<TextToSpeech>(1) }

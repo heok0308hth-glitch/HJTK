@@ -229,7 +229,7 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
             val busy = eval("window.__hjtkAi.busy()") == "true"
             if (!busy && last.isNotBlank() && System.currentTimeMillis() - stableSince > 2_500) break
         }
-        LiveBus.clear(jobId.ifBlank { "web" }); partial.value = ""
+        LiveBus.clear(jobId.ifBlank { "web" }, name); partial.value = ""
         main.postDelayed(nap, if (Thermal.level.value >= 2) 3_000 else 8_000)
         lastUse = System.currentTimeMillis()
         if (last.isBlank()) return fail("NO_ANSWER")
@@ -294,6 +294,74 @@ object WebAiHub {
         return s
     }
     fun trimAll() = synchronized(ports) { ports.values.forEach { it.trim() } }
+}
+
+/**
+ * 보이지 않는 브라우저로 검색: 검색 사이트가 앱의 HTTP 요청을 막을 때(로봇 차단·화면 개편) 진짜 브라우저 화면에서 결과를 읽는다.
+ * 구글(로그인돼 있으면 그 계정으로) → 안 되면 네이버 모바일. 결과 링크만 가져온다.
+ */
+object Scout {
+    private var app: Context? = null
+    private var web: WebView? = null
+    private val lock = Mutex()
+    private val main = Handler(Looper.getMainLooper())
+    fun install(c: Context) { app = c.applicationContext }
+
+    data class Hit(val title: String, val url: String, val snippet: String)
+
+    suspend fun search(q: String, n: Int): List<Hit> = lock.withLock {
+        val enc = java.net.URLEncoder.encode(q, "UTF-8")
+        for (url in listOf("https://www.google.com/search?q=$enc&hl=ko&num=12", "https://m.search.naver.com/search.naver?query=$enc")) {
+            val r = load(url)
+            if (r.size >= 3) return@withLock r.take(n)
+        }
+        emptyList()
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private suspend fun load(url: String): List<Hit> {
+        val c = app ?: return emptyList()
+        val done = CompletableDeferred<Unit>()
+        withContext(Dispatchers.Main) {
+            val w = web ?: WebView(c).also { v ->
+                v.settings.javaScriptEnabled = true; v.settings.domStorageEnabled = true; v.settings.userAgentString = WebUa.chrome(c)
+                v.settings.blockNetworkImage = true                       // 이미지 안 받기: 빠르고 덜 뜨겁다
+                CookieManager.getInstance().setAcceptThirdPartyCookies(v, true)
+                val dm = c.resources.displayMetrics
+                v.measure(View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.EXACTLY))
+                v.layout(0, 0, dm.widthPixels, dm.heightPixels)
+                web = v
+            }
+            w.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(v: WebView, u: String?) { if (!done.isCompleted) done.complete(Unit) }
+                override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest) = r.url.scheme !in setOf("http", "https")
+            }
+            w.onResume(); w.loadUrl(url)
+        }
+        withTimeoutOrNull(15_000) { done.await() }
+        delay(700)
+        val raw = withTimeoutOrNull(5_000) {
+            val d = CompletableDeferred<String>()
+            withContext(Dispatchers.Main) { web?.evaluateJavascript(JS) { d.complete(DeepSeekWeb.decodeJs(it)) } ?: d.complete("[]") }
+            d.await()
+        } ?: "[]"
+        main.postDelayed({ web?.onPause() }, 3_000)
+        return runCatching {
+            val a = org.json.JSONArray(raw)
+            (0 until a.length()).mapNotNull { i ->
+                val o = a.getJSONObject(i); var u = o.optString("u")
+                if (u.contains("/url?")) u = android.net.Uri.parse(u).getQueryParameter("q") ?: u
+                if (!u.startsWith("http") || Regex("""google\.|gstatic|search\.naver|naver\.com/search|accounts\.""").containsMatchIn(android.net.Uri.parse(u).host.orEmpty() + u.take(40))) null
+                else Hit(o.optString("t").trim(), u, o.optString("s").trim())
+            }.distinctBy { it.url }
+        }.getOrDefault(emptyList())
+    }
+
+    private const val JS = """(function(){var out=[],seen={};function add(a,t,s){var u=a.href;if(!u||seen[u])return;seen[u]=1;out.push({t:t,u:u,s:(s||'').slice(0,220)});}
+document.querySelectorAll('a h3').forEach(function(h){var a=h.closest('a');if(!a)return;var box=a.closest('[data-hveid],div.g,div.MjjYud,div.Gx5Zad');add(a,h.innerText,box?box.innerText.replace(h.innerText,''):'');});
+if(out.length<3){document.querySelectorAll('a').forEach(function(a){var t=(a.innerText||'').trim().split('
+')[0];if(t.length>10&&t.length<120&&/^https?:/.test(a.href)){var b=a.closest('li,div');add(a,t,b?b.innerText.replace(t,''):'');}});}
+return JSON.stringify(out.slice(0,15));})()"""
 }
 
 /** 일반 크롬처럼 보이는 UA(웹뷰 표시 'wv' 없이). DeepSeek 창과 같은 값 */

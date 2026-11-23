@@ -207,6 +207,34 @@ class JobRunner(private val h: Hjtk) {
 
     private fun checkpointFile(jobId: String) = java.io.File(store.jobDir(jobId), "foundry.json")
 
+    /**
+     * 지휘자에게 줄 팀: 회사마다 한 명(키가 있으면 API, 없으면 로그인한 웹). DeepSeek은 창 두 개(동시 2건).
+     * 성적은 Scoreboard(실제 성공률·속도·한도)로, 능력은 AiProfiles(현실 장단점)로.
+     */
+    private fun crewFor(jobId: String, diff: com.ht.hjtk.core.ai.Difficulty): com.ht.hjtk.core.agent.Crew = object : com.ht.hjtk.core.agent.Crew {
+        private val ports = java.util.concurrent.ConcurrentHashMap<String, LlmPort>()
+        private fun all(): List<Pair<com.ht.hjtk.core.agent.CrewMember, com.ht.hjtk.core.ai.Member>> =
+            h.ai.members().filter { it.transport != com.ht.hjtk.core.ai.Transport.APP }
+                .groupBy { it.provider }.mapNotNull { (_, ms) -> ms.firstOrNull { it.transport == com.ht.hjtk.core.ai.Transport.API } ?: ms.firstOrNull() }
+                .map { m -> com.ht.hjtk.core.agent.CrewMember(m.key, m.provider.label, m.provider, if (m.provider == com.ht.hjtk.core.ai.Provider.DEEPSEEK && m.transport == com.ht.hjtk.core.ai.Transport.WEB) 2 else 1,
+                    m.transport != com.ht.hjtk.core.ai.Transport.API) to m }
+        override fun members() = all().map { it.first }
+        override fun port(m: com.ht.hjtk.core.agent.CrewMember, lane: Int): LlmPort = ports.getOrPut("${m.key}#$lane") {
+            val mem = all().first { it.first.key == m.key }.second
+            when (mem.transport) {
+                com.ht.hjtk.core.ai.Transport.API -> {
+                    val model = com.ht.hjtk.core.ai.ModelRouter.modelFor(mem, diff.tierFor(com.ht.hjtk.core.ai.Role.WRITE))
+                    h.ai.apiPort(com.ht.hjtk.core.ai.Assignment(com.ht.hjtk.core.ai.Role.WRITE, mem, model, "센터 배정"), "$jobId:${m.name}:$lane", stateless = true) ?: JobLlm(jobId, port())
+                }
+                else -> if (mem.provider == com.ht.hjtk.core.ai.Provider.DEEPSEEK) (if (lane == 0) JobLlm(jobId, h.deepseek) else JobLlm(jobId, h.deepseekChat, critic = true))
+                    else com.ht.hjtk.engine.WebAiHub.port(mem.provider) ?: JobLlm(jobId, port())
+            }
+        }
+        override fun report(m: com.ht.hjtk.core.agent.CrewMember, ok: Boolean, ms: Long, text: String, via: String) { com.ht.hjtk.engine.Scoreboard.record(m.key, ok, ms, text, via) }
+        override fun available(m: com.ht.hjtk.core.agent.CrewMember) = !com.ht.hjtk.engine.Scoreboard.resting(m.key)
+        override fun rate(m: com.ht.hjtk.core.agent.CrewMember, s: com.ht.hjtk.core.ai.AiProfiles.Skill) = com.ht.hjtk.engine.Scoreboard.adjust(com.ht.hjtk.core.ai.AiProfiles.score(m.provider, s), m.key)
+    }
+
     private fun launchLoop(job: JobRec, resumeFrom: String?, skillName: String?) {
         val l = Live(job.id, job.convId, JobControl(), TapBudget(2))
         l.journal = Journal { line -> runCatching { store.journalFile(job.id).appendText(line + "\n") } }
@@ -243,9 +271,9 @@ class JobRunner(private val h: Hjtk) {
         store.updateJob(job.id) { it.copy(team = roster.entries.joinToString("\n") { e -> e.key + "=" + e.value }) }
         val loop: MissionEngine = if (legacy) AgentLoop(ctx, JobLlm(job.id, port()), tools, human, gate, l.control, { e -> onEvent(l, e) },
             config = LoopConfig(autoAllowE2 = s.autoAllowE2), resumeFrom = resumeFrom)
-        else Foundry(ctx, writer, if (diff.critic) portOf(team[AiRole.REVIEW], AiRole.REVIEW) else null, tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
-            autoAllowE2 = s.autoAllowE2, checkpoint = { json -> runCatching { cp.writeText(json) } }, resume = if (resumeFrom != null) runCatching { cp.readText() }.getOrNull() else null,
-            difficulty = diff, planner = portOf(team[AiRole.PLAN], AiRole.PLAN), researcher = portOf(team[AiRole.RESEARCH], AiRole.RESEARCH), roster = roster, ledger = ledger, saveTokens = h.ai.state.value.saveTokens)
+        // 3.3: 지휘자(센터) — 한 AI가 설계·분배·검수까지 책임지고, 팀원은 동시에 일한다
+        else com.ht.hjtk.core.agent.Conductor(ctx, crewFor(job.id, diff), tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
+            autoAllowE2 = s.autoAllowE2, difficulty = diff, ledger = ledger, catalog = com.ht.hjtk.core.agent.FoundryPrompts.catalogFor(job.goal, ctx.disabledCommands))
         l.loop = loop
         store.msg(job.convId, Role.SYSTEM, "작업을 맡았어요 · ${diff.label}" + (team[AiRole.WRITE]?.let { " · 작성 ${it.name}" } ?: "") + (team[AiRole.REVIEW]?.takeIf { diff.critic }?.let { " · 검토 ${it.name}" } ?: "") + (active?.let { " · 스킬 '${it.name}'" } ?: ""), "note", mapOf("job" to job.id))
         l.task = scope.launch {
@@ -551,7 +579,7 @@ class JobRunner(private val h: Hjtk) {
     /** DeepSeek 창의 '쓰는 중' 글자를 LiveBus로 비춘다(대화·작업 화면이 같은 방식으로 실시간 표시) */
     private suspend fun <T> mirror(web: DeepSeekWeb, owner: String, who: String, block: suspend () -> T): T = kotlinx.coroutines.coroutineScope {
         val j = launch { web.partial.collect { if (it.isNotEmpty()) LiveBus.put(owner, who, it) } }
-        try { block() } finally { j.cancel(); LiveBus.clear(owner) }
+        try { block() } finally { j.cancel(); LiveBus.clear(owner, who) }
     }
 
     /**
@@ -671,9 +699,25 @@ class JobRunner(private val h: Hjtk) {
     }
 
     private suspend fun askOnce(convId: String, text: String, waitForLogin: Boolean, pinned: com.ht.hjtk.core.ai.Assignment? = null) {
-        val a = pinned ?: h.ai.chatAssignment()
-        val name = a?.name ?: "DeepSeek"
-        val r = chatSend(convId, text, a)
+        var a = pinned ?: h.ai.chatAssignment()
+        var name = a?.name ?: "DeepSeek"
+        var r = chatSend(convId, text, a)
+        // 3.3: 사용량이 다 됐거나(한도 문구·429) 답이 비면 → 그 AI를 쉬게 하고, 이 질문에 가장 강한 다른 AI로 바로 이어서 묻는다(최대 2번)
+        val tried = mutableSetOf(a?.member?.key ?: "DEEPSEEK|WEB")
+        val skill = com.ht.hjtk.core.ai.AiProfiles.skillFor(text)
+        for (hop in 0 until 2) {
+            val limited = com.ht.hjtk.engine.Scoreboard.limitRest(r.text, r.via) != null
+            val dead = r.text.isBlank() && r.via !in setOf("NEEDS_LOGIN", "CHALLENGE")
+            if (!limited && !dead) break
+            a?.let { com.ht.hjtk.engine.Scoreboard.record(it.member.key, false, 0, r.text, r.via) }
+            val next = h.ai.members().filter { it.key !in tried && it.transport != com.ht.hjtk.core.ai.Transport.APP && !com.ht.hjtk.engine.Scoreboard.resting(it.key) }
+                .maxByOrNull { com.ht.hjtk.engine.Scoreboard.adjust(com.ht.hjtk.core.ai.AiProfiles.score(it.provider, skill), it.key) } ?: break
+            tried += next.key
+            val na = com.ht.hjtk.core.ai.Assignment(com.ht.hjtk.core.ai.Role.CHAT, next, com.ht.hjtk.core.ai.ModelRouter.modelFor(next, com.ht.hjtk.core.ai.Tier.BALANCED), "자동 교체")
+            store.msg(convId, Role.SYSTEM, "$name ${if (limited) "사용량이 다 됐어요" else "답이 없어요"} → ${na.name}로 이어서 답할게요", "note", mapOf("swap" to next.provider.name))
+            a = na; name = na.name
+            r = chatSend(convId, text, na)
+        }
         if (r.text.isNotBlank()) {
             // 이 DeepSeek 대화방이 작업 형식(AEP)으로 답했다면 봉투를 벗겨 사람 말만 남긴다
             val shown = com.ht.hjtk.core.stream.AepView.clean(r.text)
