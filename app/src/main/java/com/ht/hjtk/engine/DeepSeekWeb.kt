@@ -22,8 +22,8 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import com.ht.hjtk.core.agent.LlmPort
-import com.ht.hjtk.core.agent.LlmReply
+import com.ht.ensemble.agent.LlmPort
+import com.ht.ensemble.agent.LlmReply
 import com.ht.hjtk.core.stream.DeepSeekPatchAssembler
 import com.ht.hjtk.core.stream.DeltaExtractor
 import com.ht.hjtk.core.stream.HistoryExtract
@@ -334,7 +334,7 @@ class DeepSeekWeb(private val app: Context) : LlmPort {
     override suspend fun send(text: String, jobId: String, step: Int, newSession: Boolean): LlmReply = mutex.withLock {
         ui { main.removeCallbacks(pauseIdle); web?.onResume() }
         try {
-            sendLocked(text, newSession).also { r -> if (r.text.isNotBlank()) UsageLog.add("DeepSeek", com.ht.hjtk.core.ai.Tokens.estimate(text), com.ht.hjtk.core.ai.Tokens.estimate(r.text)) }
+            sendLocked(text, newSession).also { r -> if (r.text.isNotBlank()) UsageLog.add("DeepSeek", com.ht.ensemble.ai.Tokens.estimate(text), com.ht.ensemble.ai.Tokens.estimate(r.text)) }
         } catch (e: kotlinx.coroutines.CancellationException) {
             withContext(kotlinx.coroutines.NonCancellable) { runCatching { js("window.__hjtkStopGen?window.__hjtkStopGen():'NONE'", 1_500) } }
             throw e

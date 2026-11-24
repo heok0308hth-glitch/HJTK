@@ -92,7 +92,7 @@ class PcServer(private val h: Hjtk) {
                 if (text.isNotEmpty()) kotlinx.coroutines.runBlocking(Dispatchers.Main) {
                     if (o.optString("mode") == "task") {
                         h.store.msg(conv, Role.USER, text, meta = mapOf("mission" to "true"))
-                        h.runner.startMission(conv, text, difficulty = com.ht.hjtk.core.ai.Difficulty.of(o.optString("diff")))
+                        h.runner.startMission(conv, text, difficulty = com.ht.ensemble.ai.Difficulty.of(o.optString("diff")))
                     } else { h.store.msg(conv, Role.USER, text); h.runner.quickAsk(conv, text) }
                 }
                 send(out, 200, "application/json", JSONObject().put("conv", conv).toString())

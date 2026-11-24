@@ -1,12 +1,11 @@
-package com.ht.hjtk
+package com.ht.ensemble
 
-import com.ht.hjtk.core.aegis.ApprovalGate
-import com.ht.hjtk.core.agent.*
-import com.ht.hjtk.core.ai.AiProfiles
-import com.ht.hjtk.core.ai.Provider
-import com.ht.hjtk.core.command.CommandCall
-import com.ht.hjtk.core.command.CommandCatalog
-import com.ht.hjtk.core.command.CommandResult
+import com.ht.ensemble.aegis.ApprovalGate
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.ai.AiProfiles
+import com.ht.ensemble.ai.Provider
+import com.ht.ensemble.command.CommandCall
+import com.ht.ensemble.command.CommandResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -24,7 +23,7 @@ class ConductorTest {
     }
     private class Tools : ToolPort {
         val ran = ArrayList<String>()
-        override fun spec(id: String) = CommandCatalog.find(id)
+        override fun spec(id: String) = TestSpecs.find(id)
         override suspend fun run(call: CommandCall): CommandResult { synchronized(ran) { ran += call.cmd }; return if (call.cmd.startsWith("web.")) CommandResult.fail("검색 차단(403)") else CommandResult.ok("저장") }
     }
 
@@ -96,15 +95,6 @@ class ConductorTest {
     @Test fun jsonPick_handlesBracesInStrings_andFences() {
         val o = JsonPick.obj("앞말 {잡음 ```json\n{\"a\":\"x } y {\",\"b\":[1,2]}\n``` 뒷말")
         assertNotNull(o); assertEquals("x } y {", o!!.getString("a"))
-    }
-
-    @Test fun limitDetection_andGmailUrl() {
-        assertNotNull(com.ht.hjtk.engine.Scoreboard.limitRest("You've hit your limit · resets in 2 hours", "P0"))
-        assertNull(com.ht.hjtk.engine.Scoreboard.limitRest("한도 초과 문제를 다룬 긴 보고서입니다. ".repeat(20), "P0"))
-        val u = com.ht.hjtk.engine.GmailWeb.composeUrl("a@b.com", "참가 문의 & 질문", "안녕하세요\n줄바꿈")
-        assertTrue(u.startsWith("https://mail.google.com/mail/u/0/?view=cm&fs=1"))
-        assertTrue(u.contains("su=%EC%B0%B8%EA%B0%80%20%EB%AC%B8%EC%9D%98%20%26%20"))
-        assertFalse(u.contains("+"))
     }
 
     // ───────── 3.4 합주 ─────────
@@ -200,39 +190,5 @@ class ConductorTest {
         val b = Board(); b.add("Gemini", "사실", "마감 12/12"); b.add("ChatGPT", "주의", "상금 오기"); b.add("Gemini", "사실", "마감 12/12")
         assertEquals(2, b.all().size)
         assertTrue(b.digest().lineSequence().first().contains("주의"))
-    }
-
-    @Test fun github_push_newRepo_singleCommit_skipsSecrets() = runBlocking {
-        val calls = ArrayList<String>()
-        val gh = com.ht.hjtk.core.GitHubPush { m, p, b ->
-            calls += "$m $p"
-            when {
-                m == "GET" && p == "/user" -> 200 to """{"login":"taehyeok"}"""
-                m == "GET" && p == "/repos/taehyeok/my-app" -> 404 to """{"message":"Not Found"}"""
-                m == "POST" && p == "/user/repos" -> { assertTrue(b!!.getBoolean("private")); assertTrue(b.getBoolean("auto_init")); 201 to """{"default_branch":"main"}""" }
-                p.endsWith("/git/ref/heads/main") -> 200 to """{"object":{"sha":"p1"}}"""
-                p.endsWith("/git/commits/p1") -> 200 to """{"tree":{"sha":"tr0"}}"""
-                p.endsWith("/git/blobs") -> 201 to """{"sha":"b${calls.size}"}"""
-                p.endsWith("/git/trees") -> { assertEquals(2, b!!.getJSONArray("tree").length()); 201 to """{"sha":"tr1"}""" }
-                p.endsWith("/git/commits") -> 201 to """{"sha":"c0ffee123"}"""
-                m == "PATCH" && p.endsWith("/git/refs/heads/main") -> 200 to "{}"
-                else -> 500 to "{}"
-            }
-        }
-        val r = gh.push("my app", listOf(com.ht.hjtk.core.GitHubPush.File("index.html", "<h1>hi</h1>".toByteArray()), com.ht.hjtk.core.GitHubPush.File("app/main.py", "print(1)".toByteArray()),
-            com.ht.hjtk.core.GitHubPush.File("release.jks", ByteArray(10)), com.ht.hjtk.core.GitHubPush.File(".env", "KEY=1".toByteArray())), "첫 업로드")
-        assertEquals("https://github.com/taehyeok/my-app/tree/main", r.url)
-        assertTrue(r.created); assertEquals(2, r.files); assertEquals(listOf("release.jks", ".env"), r.skipped)
-        assertEquals("커밋은 한 번", 1, calls.count { it == "POST /repos/taehyeok/my-app/git/commits" })
-    }
-
-    @Test fun codeFiles_andUploadIntent() {
-        val md = "설명\n\n**index.html**\n```html\n<!doctype html>\n<p>a</p>\n<p>b</p>\n```\n그리고\n```python\n# file: tools/run.py\nprint(1)\nprint(2)\n```\n```text\n출력1\n출력2\n출력3\n```"
-        assertEquals(listOf("index.html", "tools/run.py"), com.ht.hjtk.core.CodeFiles.extract(md).map { it.first })
-        assertTrue(Conductor.uploadOnly("방금 결과 깃허브에 올려줘"))
-        assertFalse(Conductor.uploadOnly("할 일 앱 만들어서 깃허브에 올려줘"))
-        assertEquals("my-app", Conductor.repoFromGoal("my-app 저장소로 깃허브에 올려줘"))
-        assertEquals("todo-kit", Conductor.repoFromGoal("깃허브에 올려줘. 레포 이름: todo-kit"))
-        assertTrue(com.ht.hjtk.core.InputRouter.looksLikeMission("이거 깃허브에 올려줘"))
     }
 }

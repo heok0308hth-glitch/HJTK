@@ -16,9 +16,9 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.ht.hjtk.Hjtk
-import com.ht.hjtk.core.ai.Difficulty
-import com.ht.hjtk.core.command.CommandHandler
-import com.ht.hjtk.core.command.CommandResult
+import com.ht.ensemble.ai.Difficulty
+import com.ht.ensemble.command.CommandHandler
+import com.ht.ensemble.command.CommandResult
 import com.ht.hjtk.data.Role
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow

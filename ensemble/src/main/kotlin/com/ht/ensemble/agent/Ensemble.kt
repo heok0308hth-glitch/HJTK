@@ -1,6 +1,6 @@
-package com.ht.hjtk.core.agent
+package com.ht.ensemble.agent
 
-import com.ht.hjtk.core.ai.AiProfiles.Skill
+import com.ht.ensemble.ai.AiProfiles.Skill
 
 /**
  * HJTK 3.4 '합주(Ensemble)' — AI끼리 실제로 협업하게 만드는 두 부품.

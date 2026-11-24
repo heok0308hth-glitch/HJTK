@@ -1,9 +1,9 @@
 package com.ht.hjtk.engine
 
 import com.ht.hjtk.Hjtk
-import com.ht.hjtk.core.agent.LlmPort
-import com.ht.hjtk.core.ai.Provider
-import com.ht.hjtk.core.ai.Transport
+import com.ht.ensemble.agent.LlmPort
+import com.ht.ensemble.ai.Provider
+import com.ht.ensemble.ai.Transport
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
@@ -27,7 +27,7 @@ object AiHealth {
             val member = h.ai.members().firstOrNull { it.provider == p }
             val port: LlmPort? = when {
                 member == null -> null
-                member.transport == Transport.API -> h.ai.apiPort(com.ht.hjtk.core.ai.Assignment(com.ht.hjtk.core.ai.Role.CHAT, member, com.ht.hjtk.core.ai.ModelRouter.modelFor(member, com.ht.hjtk.core.ai.Tier.FAST), "점검"), "health:${p.name}", stateless = true)
+                member.transport == Transport.API -> h.ai.apiPort(com.ht.ensemble.ai.Assignment(com.ht.ensemble.ai.Role.CHAT, member, com.ht.ensemble.ai.ModelRouter.modelFor(member, com.ht.ensemble.ai.Tier.FAST), "점검"), "health:${p.name}", stateless = true)
                 p == Provider.DEEPSEEK -> h.deepseek
                 else -> WebAiHub.port(p)
             }

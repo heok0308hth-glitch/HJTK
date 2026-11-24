@@ -1,65 +1,15 @@
 package com.ht.hjtk.core.command
 
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.*
+
+import com.ht.ensemble.command.*
+
 /**
  * HJTK에는 생성형 모델이 없다. 대신 "명령어"가 있다.
  * DeepSeek은 이 목록을 읽고 명령을 고르고, 앱은 그것을 실행해 결과를 돌려준다.
  * 사용자도 같은 명령을 /슬래시 로 직접 쓸 수 있다.
  */
-enum class Effect(val level: Int, val label: String, val needsApproval: Boolean) {
-    READ(0, "읽기", false),
-    LOCAL(1, "기기 안 변경", false),
-    EXTERNAL(2, "밖으로 보냄", true),
-    MONEY(3, "금전", true),
-    DESTRUCT(4, "삭제·되돌릴 수 없음", true);
-    companion object { fun of(s: String?) = values().firstOrNull { it.name.equals(s, true) || "E${it.level}" == s?.uppercase() } }
-}
-
-enum class Category(val label: String, val code: String) {
-    AI("AI 협업", "AI"), WEB("웹·검색", "WEB"), DATA("데이터", "DATA"), MAIL("메일", "MAIL"),
-    CAL("일정", "CAL"), COMM("연락", "COMM"), DEVICE("기기", "DEV"), FILE("파일", "FILE"),
-    TEXT("텍스트", "TEXT"), CALC("계산", "CALC"), MEMORY("기억", "MEM"), TASK("작업", "TASK"),
-    HUB("허브", "HUB"), FLOW("파이프라인·스킬", "FLOW"), UI("화면·사용자", "UI"), LIFE("생활·특화", "LIFE")
-}
-
-data class Param(val name: String, val desc: String, val required: Boolean)
-
-data class CommandSpec(
-    val id: String,
-    val title: String,
-    val category: Category,
-    val effect: Effect,
-    val params: List<Param>,
-    val desc: String,
-    val aliases: List<String> = emptyList()
-) {
-    /** 프롬프트용 한 줄. 토큰을 아끼기 위해 짧게. */
-    fun line(): String {
-        val p = params.joinToString(",") { (if (it.required) "" else "?") + it.name }
-        val e = if (effect.level >= 2) " [E${effect.level}:승인]" else ""
-        return "$id($p) $desc$e"
-    }
-}
-
-data class CommandCall(val callId: String, val cmd: String, val args: Map<String, String>) {
-    fun arg(k: String, def: String = ""): String = args[k]?.takeIf { it.isNotBlank() } ?: def
-    fun int(k: String, def: Int): Int = args[k]?.trim()?.toDoubleOrNull()?.toInt() ?: def
-}
-
-data class CommandResult(
-    val ok: Boolean,
-    val text: String,
-    val artifact: Artifact? = null,
-    val userVisible: Boolean = false
-) {
-    companion object {
-        fun ok(t: String, artifact: Artifact? = null) = CommandResult(true, t, artifact)
-        fun fail(t: String) = CommandResult(false, t)
-    }
-}
-
-data class Artifact(val name: String, val mime: String, val content: String)
-
-fun interface CommandHandler { suspend fun run(call: CommandCall): CommandResult }
 
 private fun p(dsl: String): List<Param> = if (dsl.isBlank()) emptyList() else dsl.split('|').map { s ->
     val req = s.substringBefore(':').endsWith("*")

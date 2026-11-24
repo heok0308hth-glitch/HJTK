@@ -10,4 +10,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "HJTK"
-include(":app", ":voicecore", ":ear", ":shell")
+include(":app", ":voicecore", ":ear", ":shell", ":ensemble", ":samples:cli")

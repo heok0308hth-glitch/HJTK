@@ -1,5 +1,8 @@
 package com.ht.hjtk.core.command
 
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.*
+
 /**
  * AI 전화 — 사전 항목과 안전 규칙(순수 코드, JVM 테스트 가능).
  * 3.0: 전부 기기 안에서, 무료로. 말하는 소리는 기기 음성 엔진(내 목소리), 통화는 HJTK 통화 화면.

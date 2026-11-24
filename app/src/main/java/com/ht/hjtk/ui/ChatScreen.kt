@@ -91,7 +91,7 @@ fun ChatScreen(vm: MainVm) {
                 // 클로드처럼: 모델 이름을 누르면 고르기 판. DeepSeek 웹이면 로그인 상태를 함께 보여 준다
                 val aiSt by vm.h.ai.state.collectAsState()
                 val chatA = remember(aiSt, ds) { vm.h.ai.chatAssignment() }
-                val web = chatA == null || chatA.member.transport == com.ht.hjtk.core.ai.Transport.WEB
+                val web = chatA == null || chatA.member.transport == com.ht.ensemble.ai.Transport.WEB
                 val warn = web && (ds == DeepSeekWeb.Status.LOGIN || ds == DeepSeekWeb.Status.CHALLENGE)
                 Row(Modifier.press({ if (warn) vm.go(Route.Cockpit) else vm.pickerOpen.value = true }), verticalAlignment = Alignment.CenterVertically) {
                     SignalDot(if (warn) C.Red else if (!web || ds == DeepSeekWeb.Status.READY) C.Ink else C.Mute, 6.dp, pulse = warn)
@@ -203,7 +203,7 @@ private fun SignalPanel(vm: MainVm, j: JobRec) {
         }
         // 지금 AI가 쓰고 있는 글(접혀 있어도 보인다 — 클로드처럼 진행이 눈에 보이게)
         // 3.3: 센터와 팀원이 '누가 · 무엇을 · 지금 쓰는 글'을 보여 주는 무대(지휘자 작업). 옛 작업은 한 줄 미리보기
-        val stages by com.ht.hjtk.core.agent.StageBus.stages.collectAsState()
+        val stages by com.ht.ensemble.agent.StageBus.stages.collectAsState()
         if (stages.containsKey(j.id)) StageView(j.id, dark = true, compact = !open) else LiveWriting(j.id, dark = true)
         AnimatedVisibility(open) {
             Column(Modifier.padding(top = 10.dp)) {
@@ -230,7 +230,7 @@ private fun SignalPanel(vm: MainVm, j: JobRec) {
 @Composable
 private fun TeamBoardDark(team: String, tokens: Int, live: Map<String, LiveBus.Line>, jobId: String) {
     val rows = team.lines().filter { it.contains("=") }.map { it.substringBefore("=") to it.substringAfter("=").substringBefore(" · ") }
-    Row(verticalAlignment = Alignment.CenterVertically) { Label(I18n.t("AI 팀"), color = C.OnInkMute, modifier = Modifier.weight(1f)); if (tokens > 0) Label("토큰 약 ${com.ht.hjtk.core.ai.Tokens.fmt(tokens)}", color = C.OnInkMute) }
+    Row(verticalAlignment = Alignment.CenterVertically) { Label(I18n.t("AI 팀"), color = C.OnInkMute, modifier = Modifier.weight(1f)); if (tokens > 0) Label("토큰 약 ${com.ht.ensemble.ai.Tokens.fmt(tokens)}", color = C.OnInkMute) }
     rows.forEach { (role, name) ->
         val busy = live.values.any { it.owner.startsWith(jobId) && it.who.startsWith(name.substringBefore(" (")) }
         Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -766,7 +766,7 @@ internal fun ModelChip(vm: MainVm) {
 /** 답의 출처를 사람 말로: 내부 경로 코드(P0_STREAM, API_CLAUDE…)를 그대로 보이지 않는다 */
 internal fun whoOf(via: String?): String = when {
     via == null -> "DeepSeek"
-    via.startsWith("API_") && via != "API_ERR" -> com.ht.hjtk.core.ai.Provider.values().firstOrNull { it.name == via.removePrefix("API_") }?.label ?: "DeepSeek"
+    via.startsWith("API_") && via != "API_ERR" -> com.ht.ensemble.ai.Provider.values().firstOrNull { it.name == via.removePrefix("API_") }?.label ?: "DeepSeek"
     else -> "DeepSeek"
 }
 internal fun viaOf(via: String?): String? = when {

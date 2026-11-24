@@ -1,4 +1,4 @@
-package com.ht.hjtk.core
+package com.ht.ensemble.util
 
 /**
  * 결과 글(마크다운)의 코드 블록을 실제 파일로 — GitHub에 올릴 때 '글 한 덩어리'가 아니라 동작하는 저장소가 되게.

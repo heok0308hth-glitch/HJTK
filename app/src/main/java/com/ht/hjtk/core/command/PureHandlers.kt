@@ -1,5 +1,8 @@
 package com.ht.hjtk.core.command
 
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.*
+
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLDecoder

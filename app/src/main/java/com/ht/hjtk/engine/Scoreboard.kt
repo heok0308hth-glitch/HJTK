@@ -1,7 +1,7 @@
 package com.ht.hjtk.engine
 
 import android.content.Context
-import com.ht.hjtk.core.ai.Provider
+import com.ht.ensemble.ai.Provider
 import org.json.JSONObject
 
 /**
@@ -31,7 +31,7 @@ object Scoreboard {
 
     fun record(key: String, ok: Boolean, ms: Long, text: String, via: String) = synchronized(stats) {
         val s = stats.getOrPut(key) { Stat() }
-        if (ok) { s.ok++; s.lastOkAt = System.currentTimeMillis() } else { s.fail++; s.lastFailAt = System.currentTimeMillis(); s.lastVia = if (com.ht.hjtk.core.ai.AiProfiles.limitHit(text, via)) "LIMIT" else if (text.isBlank()) via.ifBlank { "EMPTY" } else "WEAK" }
+        if (ok) { s.ok++; s.lastOkAt = System.currentTimeMillis() } else { s.fail++; s.lastFailAt = System.currentTimeMillis(); s.lastVia = if (com.ht.ensemble.ai.AiProfiles.limitHit(text, via)) "LIMIT" else if (text.isBlank()) via.ifBlank { "EMPTY" } else "WEAK" }
         if (s.ok + s.fail > 20) { s.ok = (s.ok * 0.8).toInt(); s.fail = (s.fail * 0.8).toInt() }    // 오래된 기록은 옅게
         if (ok) s.avgMs = if (s.avgMs == 0.0) ms.toDouble() else s.avgMs * 0.7 + ms * 0.3
         limitRest(text, via)?.let { rest -> s.restUntil = System.currentTimeMillis() + rest; s.lastNote = "사용량 한도 · ${rest / 60_000}분 쉬는 중" }
@@ -66,7 +66,7 @@ object Scoreboard {
     /** 한도 문구면 쉴 시간(ms). "in 3 hours", "2시간 후" 같은 말이 있으면 그 시간, 없으면 3시간 */
     fun limitRest(text: String, via: String): Long? {
         val t = text.take(600)
-        if (!com.ht.hjtk.core.ai.AiProfiles.limitHit(t, via)) return null
+        if (!com.ht.ensemble.ai.AiProfiles.limitHit(t, via)) return null
         Regex("(\\d+)\\s*(hours?|시간)", RegexOption.IGNORE_CASE).find(t)?.groupValues?.get(1)?.toLongOrNull()?.let { return (it * 3_600_000).coerceIn(600_000, 24 * 3_600_000) }
         Regex("(\\d+)\\s*(minutes?|분)", RegexOption.IGNORE_CASE).find(t)?.groupValues?.get(1)?.toLongOrNull()?.let { return (it * 60_000).coerceIn(120_000, 6 * 3_600_000) }
         return 3 * 3_600_000L

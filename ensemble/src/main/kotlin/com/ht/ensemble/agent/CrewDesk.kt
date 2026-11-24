@@ -1,9 +1,9 @@
-package com.ht.hjtk.core.agent
+package com.ht.ensemble.agent
 
-import com.ht.hjtk.core.ai.AiProfiles
-import com.ht.hjtk.core.ai.AiProfiles.Skill
-import com.ht.hjtk.core.ai.TokenLedger
-import com.ht.hjtk.core.ai.Tokens
+import com.ht.ensemble.ai.AiProfiles
+import com.ht.ensemble.ai.AiProfiles.Skill
+import com.ht.ensemble.ai.TokenLedger
+import com.ht.ensemble.ai.Tokens
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope

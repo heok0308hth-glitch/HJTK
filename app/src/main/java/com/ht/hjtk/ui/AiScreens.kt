@@ -20,15 +20,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ht.hjtk.core.ai.Difficulty
-import com.ht.hjtk.core.ai.Member
-import com.ht.hjtk.core.ai.ModelCatalog
-import com.ht.hjtk.core.ai.ModelRouter
-import com.ht.hjtk.core.ai.Provider
-import com.ht.hjtk.core.ai.Role
-import com.ht.hjtk.core.ai.Tier
-import com.ht.hjtk.core.ai.Tokens
-import com.ht.hjtk.core.ai.Transport
+import com.ht.ensemble.ai.Difficulty
+import com.ht.ensemble.ai.Member
+import com.ht.ensemble.ai.ModelCatalog
+import com.ht.ensemble.ai.ModelRouter
+import com.ht.ensemble.ai.Provider
+import com.ht.ensemble.ai.Role
+import com.ht.ensemble.ai.Tier
+import com.ht.ensemble.ai.Tokens
+import com.ht.ensemble.ai.Transport
 import com.ht.hjtk.engine.LiveBus
 import kotlinx.coroutines.launch
 

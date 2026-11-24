@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: "HJTK Ensemble: a Kotlin multi-agent orchestration SDK"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - name: "Heo Taehyeok"
+    alias: "heok0308hth-glitch"
+repository-code: "https://github.com/heok0308hth-glitch/HJTK"
+license: MIT
+version: 0.1.0
+date-released: 2026-11-24
+keywords:
+  - multi-agent systems
+  - LLM orchestration
+  - Kotlin
+  - Android
+  - AI agents
+abstract: >-
+  Ensemble is a lightweight Kotlin library that makes several large language models
+  (Claude, GPT, Gemini, Grok, DeepSeek, local models) work as one team. A center/PM
+  plans and reviews. A load-aware dispatcher assigns tasks by real strengths and
+  live track record. Teammates share findings on a board, and results are
+  cross-checked by a different vendor's model. A company mode runs 30-minute to
+  3-hour projects with charters, sprints, review scores, stand-ups and final QA.

@@ -1,5 +1,8 @@
 package com.ht.hjtk.core.agent
 
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.*
+
 import kotlin.math.roundToInt
 
 /** ETA는 약속이 아니라 구간이다. */

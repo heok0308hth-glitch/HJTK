@@ -1,4 +1,4 @@
-package com.ht.hjtk.core.ai
+package com.ht.ensemble.ai
 
 /**
  * AI 계층의 순수 코어(안드로이드 의존 없음).

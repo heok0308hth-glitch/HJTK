@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.command.CommandCall
 import com.ht.hjtk.data.Role
 import com.ht.hjtk.engine.Service
 

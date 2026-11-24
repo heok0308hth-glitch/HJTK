@@ -14,10 +14,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.webkit.WebViewCompat
-import com.ht.hjtk.core.agent.LlmPort
-import com.ht.hjtk.core.agent.LlmReply
-import com.ht.hjtk.core.ai.Provider
-import com.ht.hjtk.core.ai.Tokens
+import com.ht.ensemble.agent.LlmPort
+import com.ht.ensemble.agent.LlmReply
+import com.ht.ensemble.ai.Provider
+import com.ht.ensemble.ai.Tokens
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

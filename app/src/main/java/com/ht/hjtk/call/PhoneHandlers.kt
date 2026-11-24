@@ -2,8 +2,8 @@ package com.ht.hjtk.call
 
 import android.content.Intent
 import com.ht.hjtk.Hjtk
-import com.ht.hjtk.core.command.CommandHandler
-import com.ht.hjtk.core.command.CommandResult
+import com.ht.ensemble.command.CommandHandler
+import com.ht.ensemble.command.CommandResult
 import com.ht.hjtk.core.command.PhoneGuard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -13,7 +13,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 object PhoneHandlers {
     fun of(h: Hjtk): Map<String, CommandHandler> = mapOf(
         "google.ask" to CommandHandler { c ->
-            val port = com.ht.hjtk.engine.WebAiHub.port(com.ht.hjtk.core.ai.Provider.GEMINI) ?: return@CommandHandler CommandResult.fail("Gemini 창을 열 수 없어요")
+            val port = com.ht.hjtk.engine.WebAiHub.port(com.ht.ensemble.ai.Provider.GEMINI) ?: return@CommandHandler CommandResult.fail("Gemini 창을 열 수 없어요")
             val r = port.send(com.ht.hjtk.engine.AccountHub.googlePrompt(c.arg("app"), c.arg("q")), "google", 1, true)
             when {
                 r.text.isNotBlank() -> CommandResult.ok(r.text)

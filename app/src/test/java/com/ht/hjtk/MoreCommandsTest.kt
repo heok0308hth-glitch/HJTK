@@ -1,6 +1,6 @@
 package com.ht.hjtk
 
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.command.CommandCall
 import com.ht.hjtk.core.command.CommandCatalog
 import com.ht.hjtk.core.command.PureHandlers
 import kotlinx.coroutines.runBlocking

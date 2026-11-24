@@ -1,12 +1,12 @@
-package com.ht.hjtk.core.agent
+package com.ht.ensemble.agent
 
-import com.ht.hjtk.core.aegis.ApprovalGate
-import com.ht.hjtk.core.ai.AiProfiles
-import com.ht.hjtk.core.ai.AiProfiles.Skill
-import com.ht.hjtk.core.ai.Difficulty
-import com.ht.hjtk.core.ai.TokenLedger
-import com.ht.hjtk.core.ai.Tokens
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.aegis.ApprovalGate
+import com.ht.ensemble.ai.AiProfiles
+import com.ht.ensemble.ai.AiProfiles.Skill
+import com.ht.ensemble.ai.Difficulty
+import com.ht.ensemble.ai.TokenLedger
+import com.ht.ensemble.ai.Tokens
+import com.ht.ensemble.command.CommandCall
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -140,7 +140,8 @@ class Conductor(
         phase("통합", 0.84, "결과물을 하나로 합치는 중")
         val writer = bestFree(Skill.WRITE, avoidCenter = true, hint = p.finalWho)
         StageBus.edit(ctx.jobId) { it.copy(cards = it.cards + StageBus.Card("final", "통합 · ${p.deliverable.take(24)}", writer.name, writer.provider.name, StageBus.S.RUN, "칠판과 결과를 합치는 중", clock())) }
-        var draft = askWithFailover(writer, Skill.WRITE, "final", composePrompt(p))
+        // 통합본에 칠판 메모가 섞여 나오면 떼어 낸다(메모는 칠판으로)
+        var draft = absorb(askWithFailover(writer, Skill.WRITE, "final", composePrompt(p)), writer.name)
         StageBus.card(ctx.jobId, "final") { it.copy(status = if (draft.isBlank()) StageBus.S.FAIL else StageBus.S.DONE, doing = "${draft.length}자", endedAt = clock()) }
 
         // 검수: 센터(+ 깊게 이상이면 다른 회사 AI 한 번 더)
@@ -151,11 +152,12 @@ class Conductor(
                 phase("검수", 0.9 + round * 0.04, "${rv.name}가 합격 기준으로 검수하는 중")
                 val id = "check$round"
                 StageBus.edit(ctx.jobId) { it.copy(cards = it.cards + StageBus.Card(id, if (round == 0) "센터 검수" else "교차 검수", rv.name, rv.provider.name, StageBus.S.CHECK, "기준과 대조하는 중", clock())) }
-                val fixes = parseFixes(askWithFailover(rv, Skill.REVIEW, id, reviewPrompt(p, draft)))
+                // 검수 답은 짧은 JSON일 수 있다({"pass":true}) → 짧다고 '부실'로 보지 않는다
+                val fixes = parseFixes(askWithFailover(rv, Skill.REVIEW, id, reviewPrompt(p, draft), minLen = 8))
                 if (fixes.isEmpty()) { StageBus.card(ctx.jobId, id) { it.copy(status = StageBus.S.DONE, doing = "합격", endedAt = clock()) }; emit(AgentEvent.Collab(clock(), "검수", rv.name, "합격")); continue }
                 emit(AgentEvent.Collab(clock(), "검수", rv.name, "고칠 점 ${fixes.size}개: " + fixes.take(3).joinToString(" / ")))
                 StageBus.card(ctx.jobId, id) { it.copy(doing = "고칠 점 ${fixes.size}개 → ${writer.name}가 다듬는 중") }
-                val revised = askWithFailover(writer, Skill.WRITE, id, revisePrompt(p, draft, fixes))
+                val revised = absorb(askWithFailover(writer, Skill.WRITE, id, revisePrompt(p, draft, fixes)), writer.name)
                 if (revised.length > draft.length * 0.5) draft = revised
                 StageBus.card(ctx.jobId, id) { it.copy(status = StageBus.S.DONE, doing = "반영 완료", endedAt = clock()) }
             }
@@ -165,11 +167,12 @@ class Conductor(
 
         // 완성 → (요청했으면) GitHub
         val name = "결과_" + ctx.goal.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").take(24) + ".md"
-        runCatching { tools.run(CommandCall("ship", "task.artifact", mapOf("name" to name, "content" to "# ${p.deliverable}\n\n$draft"))) }
+        val shipped = runCatching { tools.run(CommandCall("ship", "task.artifact", mapOf("name" to name, "content" to "# ${p.deliverable}\n\n$draft"))).ok }.getOrDefault(false)
+        if (!shipped) files?.write(name, "# ${p.deliverable}\n\n$draft")      // 도구가 없으면(SDK) 프로젝트 폴더에 직접
         // 결과물 전달: 코드 블록은 실제 파일로(웹 파일은 app/ — 그대로 APK가 된다), 글은 완성본으로
         var app = false
         files?.let { fs ->
-            val code = com.ht.hjtk.core.CodeFiles.extract(draft)
+            val code = com.ht.ensemble.util.CodeFiles.extract(draft)
             val web = code.filter { it.first.substringAfterLast('.') in setOf("html", "css", "js") }
             if (web.any { it.first.endsWith(".html") }) {
                 app = true
@@ -184,7 +187,7 @@ class Conductor(
             pauseGate()
             phase("올리기", 0.97, "GitHub에 올리는 중")
             // 결과 글 속 코드 블록을 실제 파일로 풀어 둔다 → 저장소가 바로 쓸 수 있는 모양이 된다
-            if (files == null) com.ht.hjtk.core.CodeFiles.extract(draft).forEach { (f, code) -> runCatching { tools.run(CommandCall("file", "task.artifact", mapOf("name" to f, "content" to code))) } }
+            if (files == null) com.ht.ensemble.util.CodeFiles.extract(draft).forEach { (f, code) -> runCatching { tools.run(CommandCall("file", "task.artifact", mapOf("name" to f, "content" to code))) } }
             val args = (p.push ?: emptyMap()).toMutableMap()
             args.putIfAbsent("repo", repoName(p)); args.putIfAbsent("message", "HJTK: ${p.deliverable.take(60)}")
             val r = exec.run(CommandCall("push", "github.push", args))
@@ -388,7 +391,7 @@ class Conductor(
         if (v.trim() == m.value && urls.isNotEmpty()) urls.joinToString(",") else o.take(300)
     }
 
-    private suspend fun askWithFailover(first: CrewMember, skill: Skill, cardId: String, prompt: String) = desk.ask(first, skill, cardId, prompt)
+    private suspend fun askWithFailover(first: CrewMember, skill: Skill, cardId: String, prompt: String, minLen: Int = 20) = desk.ask(first, skill, cardId, prompt, minLen)
     private suspend fun askRaw(m: CrewMember, prompt: String, cardId: String) = desk.askCenter(m, prompt, takeOver = cardId == "plan")
     private fun next(skill: Skill, tried: Set<String>, allowCenter: Boolean = false) = desk.next(skill, tried, allowCenter)
     private fun bestFree(skill: Skill, avoidCenter: Boolean, hint: String = "") = desk.bestFree(skill, avoidCenter, hint)

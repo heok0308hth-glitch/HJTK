@@ -1,9 +1,9 @@
 package com.ht.hjtk.core
 
-import com.ht.hjtk.core.aegis.Canonical
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.aegis.Canonical
+import com.ht.ensemble.command.CommandCall
 import com.ht.hjtk.core.command.CommandCatalog
-import com.ht.hjtk.core.command.Effect
+import com.ht.ensemble.command.Effect
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.ln

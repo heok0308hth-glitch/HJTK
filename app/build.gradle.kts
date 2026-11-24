@@ -17,8 +17,8 @@ android {
         applicationId = "com.ht.hjtk"
         minSdk = 28
         targetSdk = 35
-        versionCode = 14
-        versionName = "3.6.0"
+        versionCode = 15
+        versionName = "3.7.0"
         // 음성 엔진(onnxruntime)·글자 인식은 64비트 ARM만 싣는다: 요즘 폰은 전부 arm64, 용량은 절반
         ndk { abiFilters += listOf("arm64-v8a") }
     }
@@ -96,6 +96,8 @@ dependencies {
     implementation("com.sun.mail:android-activation:1.6.7")
     // 3.0: 기기 안 음성(내 목소리) · 화면 글자 인식(사진 대신 글자로 보내 토큰 절약)
     implementation(project(":voicecore"))
+    // 3.7: 오케스트레이션 코어는 SDK 모듈로(안드로이드는 플랫폼 org.json을 쓴다)
+    implementation(project(":ensemble")) { exclude(group = "org.json", module = "json") }
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
     implementation("com.google.mlkit:text-recognition-korean:16.0.1")
     // 3.6: 만든 웹 앱을 기기 안에서 설치 가능한 APK로 서명(Apache-2.0, 순수 Java)

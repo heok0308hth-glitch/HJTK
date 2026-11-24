@@ -15,7 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ht.hjtk.core.I18n
-import com.ht.hjtk.core.ai.Difficulty
+import com.ht.ensemble.ai.Difficulty
 import com.ht.hjtk.engine.Routine
 import com.ht.hjtk.engine.Routines
 import com.ht.hjtk.engine.UsageLog

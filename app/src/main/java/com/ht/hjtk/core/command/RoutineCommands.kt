@@ -1,5 +1,8 @@
 package com.ht.hjtk.core.command
 
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.*
+
 /** 루틴(예약 작업) 사전 항목 — 실행은 engine/Routines */
 object RoutineCommands {
     private fun spec(id: String, title: String, params: String, desc: String, alias: String) = CommandSpec(id, title, Category.TASK, Effect.LOCAL,

@@ -1,12 +1,11 @@
-package com.ht.hjtk
+package com.ht.ensemble
 
-import com.ht.hjtk.core.aegis.ApprovalGate
-import com.ht.hjtk.core.agent.*
-import com.ht.hjtk.core.ai.AiProfiles
-import com.ht.hjtk.core.ai.Provider
-import com.ht.hjtk.core.command.CommandCall
-import com.ht.hjtk.core.command.CommandCatalog
-import com.ht.hjtk.core.command.CommandResult
+import com.ht.ensemble.aegis.ApprovalGate
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.ai.AiProfiles
+import com.ht.ensemble.ai.Provider
+import com.ht.ensemble.command.CommandCall
+import com.ht.ensemble.command.CommandResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -28,7 +27,7 @@ class CompanyTest {
         override suspend fun takeover(jobId: String, what: String, url: String?) = null
     }
     private val tools = object : ToolPort {
-        override fun spec(id: String) = CommandCatalog.find(id)
+        override fun spec(id: String) = TestSpecs.find(id)
         override suspend fun run(call: CommandCall) = CommandResult.ok("ok")
     }
 
@@ -164,14 +163,5 @@ class CompanyTest {
         assertTrue("보고서에 AI별 성적", files.read(Company.REPORT)!!.contains("| AI | 끝낸 일 |"))
         assertTrue("앱 규칙이 작성 지시에", f.prompts.any { it.contains("APK로 포장될 웹 앱") })
         StageBus.drop("CO4")
-    }
-
-    @Test fun bundle_markdownToHtml() {
-        val h = com.ht.hjtk.core.forge.Bundle.toHtml("# 제목\n\n문단 **굵게** `코드` [링크](https://ex.com)\n\n- 하나\n- 둘\n\n| a | b |\n|---|---|\n| 1 | <2> |\n\n```kotlin\nval x = 1 < 2\n```")
-        assertTrue(h, h.contains("<h2>제목</h2>")); assertTrue(h.contains("<strong>굵게</strong>")); assertTrue(h.contains("<code>코드</code>"))
-        assertTrue(h.contains("<a href=\"https://ex.com\">링크</a>")); assertTrue(h.contains("<ul><li>하나</li><li>둘</li></ul>"))
-        assertTrue(h.contains("<td>&lt;2&gt;</td>")); assertTrue(h.contains("val x = 1 &lt; 2"))
-        val doc = com.ht.hjtk.core.forge.Bundle.html("청주 카페", "요약", listOf(com.ht.hjtk.core.forge.Bundle.Part("01.md", "# 시장\n본문"), com.ht.hjtk.core.forge.Bundle.Part("02.md", "# 재무\n본문")), "HJTK")
-        assertTrue(doc.contains("<nav>")); assertTrue(doc.contains("href=\"#p1\">재무"))
     }
 }

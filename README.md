@@ -2,17 +2,30 @@
 
 <p align="center">
   <a href="https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml"><img src="https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml/badge.svg" alt="Android CI"></a>
-  <img src="https://img.shields.io/badge/version-3.6.0-E44D2E?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-3.7.0-E44D2E?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/Android-9%2B-0E0E0E?style=flat-square&logo=android" alt="android">
   <img src="https://img.shields.io/badge/Kotlin-2.1-0E0E0E?style=flat-square&logo=kotlin" alt="kotlin">
   <img src="https://img.shields.io/badge/Jetpack_Compose-BOM_2025.05-0E0E0E?style=flat-square" alt="compose">
-  <img src="https://img.shields.io/badge/tests-131_passing-0E0E0E?style=flat-square" alt="tests">
+  <img src="https://img.shields.io/badge/tests-135_passing-0E0E0E?style=flat-square" alt="tests">
   <img src="https://img.shields.io/badge/license-MIT-0E0E0E?style=flat-square" alt="license">
+  <a href="ensemble/README.md"><img src="https://img.shields.io/badge/SDK-Ensemble_0.1.0-E44D2E?style=flat-square" alt="Ensemble SDK"></a>
 </p>
 
 > **Don't make tool, make innovation.**
 
 **HJTK** is a personal Android assistant that ships **no AI model of its own**. It conducts the AIs you already use — Claude, ChatGPT, Gemini, Grok and DeepSeek — by signing into their web apps inside the app (no API key required). In **Project mode** they run like a small company for 30 minutes to 3 hours. A PM writes a charter with a project-specific rubric. The team works in sprints of tickets, where one ticket is one file. Every ticket is scored by a *different company's* AI the way a code review would score it, and anything below 8/10 goes back for revision. Stand-ups re-plan with the time that remains. A final QA and a project report close it out. The result is then handed to you in a usable form. If the team built an app, HJTK packages it **on the phone into an installable, signed APK**. If it wrote documents, you get one bound, printable edition. Progress is checkpointed, so it survives app restarts. Anything that leaves the phone waits for one tap on **실행**.
+
+**For developers:** the orchestration engine is published as **[Ensemble](ensemble/README.md)**, a lightweight Kotlin multi-agent orchestration SDK with no Android dependency. Use it to make Claude, GPT, Gemini, Grok, DeepSeek or local Ollama models work as one team in your own JVM, server or Android project.
+
+```kotlin
+val team = Ensemble.team {
+    member(Provider.CLAUDE, Ports.anthropic(key1))
+    member(Provider.GPT, Ports.openAi(key2))
+    member(Provider.DEEPSEEK, Ports.deepSeek(key3), lanes = 2)
+}
+team.conduct("Compare the 2026 design competitions")                     // minutes
+team.project("Business plan for a small café", minutes = 60, dir = File("out")) // an hour, company mode
+```
 
 HJTK는 **생성형 모델을 한 바이트도 넣지 않은** 개인용 AI 비서입니다. 이미 쓰고 있는 Claude·ChatGPT·Gemini·Grok·DeepSeek에 앱 안에서 로그인해 **키 없이** 지휘합니다.
 
@@ -161,53 +174,54 @@ flowchart LR
 
 ## 아키텍처
 
+앱의 두뇌는 **안드로이드와 완전히 분리된 SDK(`ensemble/`)** 에 있습니다. 앱은 그 위에 웹 AI 연결, 도구, 화면을 얹은 하나의 사용 예입니다.
+
 ```mermaid
 flowchart TB
-    subgraph UI[ui — Jetpack Compose · 디자인 시스템 '먹과 인장']
-      Chat[대화·작업 무대] --- Hub[허브·연결] --- Call[전화]
+    subgraph APP[app — Android · Jetpack Compose]
+      UI[대화·작업 무대·허브·전화] --> JR[JobRunner]
+      JR --> Ports[웹 AI 포트 ×5<br/>로그인 세션 · 키 없음]
+      JR --> Tools[도구 150+<br/>웹·메일·캘린더·파일·GitHub]
+      JR --> Forge[APK 포장기 · 완성본]
     end
-    subgraph Agent[agent]
-      JR[JobRunner<br/>사건 → 대화·알림]
+    subgraph SDK[ensemble — 순수 Kotlin SDK · 안드로이드 의존 없음]
+      E[Ensemble 빌더] --> Comp[Company<br/>회사 모드]
+      E --> Cond[Conductor<br/>지휘자]
+      Comp & Cond --> Desk[CrewDesk<br/>교체·멈춤·크레딧]
+      Desk --> Disp[Dispatch] & Board[Board] & Gate[ApprovalGate]
+      HP[HTTP 포트<br/>OpenAI 호환 · Anthropic · Ollama]
     end
-    subgraph Core[core — 안드로이드 의존 없음, JVM 테스트]
-      Comp[Company · 회사 모드] --- Cond[Conductor] --- Ens[Board · Dispatch · CrewDesk]
-      Cmd[명령어 사전 150+] --- Aegis[승인 게이트]
-      AEP[AEP-1 봉투·스트림 파서] --- GH[GitHubPush · CodeFiles]
-    end
-    subgraph Engine[engine]
-      Web[WebAi ×4 · DeepSeekWeb] --- Api[API 경로·선택]
-      Th[Thermal] --- Score[Scoreboard]
-    end
+    JR --> Comp & Cond
+    Ports -. LlmPort .-> Desk
+    Tools -. ToolPort .-> Desk
     VC[(voicecore<br/>Chatterbox ONNX)]
-    Ear[(ear — 통화 귀<br/>별도 앱)]
-    UI --> Agent --> Core
-    Core --> Engine
-    Call --> VC
-    Call -. 서명 권한 방송 .- Ear
+    Ear[(ear — 통화 귀)]
+    UI --> VC
+    UI -. 서명 권한 방송 .- Ear
 ```
 
 ```
+ensemble/      ★ Kotlin 멀티 에이전트 오케스트레이션 SDK(안드로이드 의존 없음) — Company · Conductor · CrewDesk · Board · Dispatch · ApprovalGate · Ports
+samples/cli/   SDK 예제 — 터미널에서 AI 팀 돌리기(--demo는 키 없이)
 app/src/main/java/com/ht/hjtk/
-  core/forge/  기기 안 APK 포장기(바이너리 매니페스트 패치 · apksig 서명) · 완성본 묶기(마크다운 → HTML)
-  core/        순수 Kotlin — Company(회사 모드), Conductor(지휘자), CrewDesk(팀 호출·교체·멈춤), Ensemble(칠판·배정), 명령어 사전, 승인 게이트, GitHubPush
-  engine/      웹 AI(WebView) · DeepSeek · 계정 하나로 · 발열 조율 · 성적표 · Gmail 웹 발송 · 숨은 브라우저 검색
+  core/        앱 전용 순수 Kotlin — 명령어 사전, AEP-1 파서, APK 포장기(forge), GitHubPush, 완성본 묶기
+  engine/      웹 AI(WebView) · DeepSeek · 계정 하나로 · 발열 조율 · 성적표 · 결과물 전달 · AI 상태 점검
   agent/       JobRunner — 작업 수명, 일시정지·중지, 대화 라우팅
-  tools/       명령 → 안드로이드 동작(웹·메일·캘린더·파일·GitHub…)
+  tools/       명령 → 안드로이드 동작
   call/        기본 전화 앱 · AI 통화 루프
   ui/          Compose 화면 · StageView(작업 무대)
 voicecore/     음성 엔진(순수 JVM) — 토크나이저, 생성 루프, 한국어 읽기
-shell/         APK 포장용 셸(WebView 하나, 6KB) — 빌드 때 HJTK 자산으로 들어간다
+shell/         APK 포장용 셸(WebView 하나, 6KB)
 ear/           통화 귀(접근성) — 본체 설치가 Play 프로텍트에 막히지 않게 분리
 ```
 
-Kotlin 약 15,000줄 · 모듈 3개 · 명령어 150개 이상.
-
----
+Kotlin·Java 약 17,000줄 · 모듈 6개 · 명령어 150개 이상.
 
 ## 검증
 
 | 종류 | 내용 |
 |---|---|
+| SDK(순수 JVM) | `:ensemble:test` 16개 — 지휘자·회사 모드 전 과정, 빌더로 만든 팀이 끝까지 일하는지, HTTP 포트를 로컬 가짜 서버로(OpenAI 호환·Anthropic·429 한도·연결 실패). CI에서 키 없이 `--demo` 예제도 실제로 돌립니다. |
 | APK 포장기 | 실제 셸 APK로 포장 → 서명 → `apksig` 검증(v2) · `aapt2`로 패키지·한글 앱 이름 확인 · `zipalign -c 4` · 자리표시를 넘는 이름은 거부. |
 | 회사 모드 시뮬레이션 | 가짜 시계로 '2시간 프로젝트'를 몇 초 만에 끝까지 돌림. 스프린트 반복, 반려 → 수정, 예산 대부분 사용 후 마무리, 품질 9점 이상이면 일찍 끝남, 중지 → 앱 재시작 → 끝난 티켓을 다시 하지 않고 이어감. 이 시험이 실제 버그 3개(티켓 중복으로 인한 교착, 스프린트 1 이중 실행, 의존 작업이 앞 작업을 기다리지 않던 경쟁 상태)를 잡아냈습니다. |
 | 단위 테스트 | 지휘자 전체 흐름을 가짜 AI 팀으로 끝까지 돌림(병렬 실행, 한도 감지 → 교체, 막힌 검색 → AI 직접 조사). 일을 한 AI에게 몰아줘도 고르게 나뉘는지, 일시정지 중 새 요청 0건, 중지 시 진행 중 요청 취소, GitHub 단일 커밋·비밀 파일 제외, 칠판 파싱. |
@@ -232,7 +246,8 @@ GitHub Actions가 푸시마다 같은 테스트를 돌리고 디버그 APK를 �
 
 | 버전 | 핵심 |
 |---|---|
-| **3.6** | 결과물 전달 — 만든 웹 앱을 폰에서 서명된 APK로 포장(실행 검사 → 오류 수정 → 설치), 문서는 목차 있는 완성본 HTML, 프로젝트 ZIP, 다운로드 폴더·결과물 카드 · AI 상태 점검(실패 이유·실제 점검·화면 진단) |
+| **3.7** | **Ensemble SDK 공개** — 오케스트레이션 코어를 순수 Kotlin 라이브러리로 분리(`com.ht.ensemble`), `Ensemble.team { }` 빌더, OpenAI 호환·Anthropic·Gemini·DeepSeek·Grok·Ollama 포트, 터미널 예제, JitPack 배포 · 검수 답이 짧은 JSON일 때 잘못 교체하던 버그와 통합본에 칠판 메모가 섞이던 버그 수정 |
+| 3.6 | 결과물 전달 — 만든 웹 앱을 폰에서 서명된 APK로 포장(실행 검사 → 오류 수정 → 설치), 문서는 목차 있는 완성본 HTML, 프로젝트 ZIP, 다운로드 폴더·결과물 카드 · AI 상태 점검(실패 이유·실제 점검·화면 진단) |
 | 3.5 | 회사 모드 — PM·헌장·루브릭, 스프린트·티켓, 다른 회사 AI의 리뷰 채점과 반려·수정, 스탠드업, 최종 QA, 보고서, 30분~3시간, 체크포인트 이어하기 |
 | 3.4 | 합주 — 배정 시장, 칠판, 교차 확인, 자율 보강 · 일시정지·중지 즉시 반영 · 새 대화의 이전 답 버그 수정 · GitHub 업로드 |
 | 3.3 | 지휘자(센터) · 작업 무대 애니메이션 · + 옆 모델 칩 · 사용량 한도 시 자동 교체 · Gmail 웹 실제 발송 |

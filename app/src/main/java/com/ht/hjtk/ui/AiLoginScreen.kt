@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ht.hjtk.core.I18n
-import com.ht.hjtk.core.ai.Provider
+import com.ht.ensemble.ai.Provider
 import com.ht.hjtk.engine.DeepSeekWeb
 import com.ht.hjtk.engine.WebAi
 import com.ht.hjtk.engine.WebAiHub

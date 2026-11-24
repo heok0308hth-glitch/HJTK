@@ -1,5 +1,8 @@
 package com.ht.hjtk.core.command
 
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.*
+
 /** 계정 연동 명령의 사전 항목(실행은 engine/ConnectorHub). 사전에 있어야 공정 설계자가 쓸 수 있다. */
 object ConnectorCommands {
     private fun spec(id: String, title: String, e: Effect, params: String, desc: String, alias: String) = CommandSpec(id, title, if (id.startsWith("site")) Category.WEB else Category.HUB, e,

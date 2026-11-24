@@ -1,0 +1,5 @@
+# JitPack: SDK 모듈(ensemble)만 배포한다
+jdk:
+  - openjdk17
+install:
+  - ./gradlew :ensemble:publishToMavenLocal -x test --no-daemon

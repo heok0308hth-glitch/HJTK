@@ -1,7 +1,7 @@
 package com.ht.hjtk.engine
 
 import android.content.Context
-import com.ht.hjtk.core.ai.Provider
+import com.ht.ensemble.ai.Provider
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONObject
 

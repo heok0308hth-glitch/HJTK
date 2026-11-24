@@ -1,4 +1,4 @@
-package com.ht.hjtk.core.ai
+package com.ht.ensemble.ai
 
 /**
  * AI 성적표 — 회사별 장단점을 '현실적으로' 적어 둔 것(2026년 하반기 기준, 웹·API 공통).

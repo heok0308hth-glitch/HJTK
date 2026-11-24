@@ -17,7 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ht.hjtk.core.I18n
-import com.ht.hjtk.core.ai.Provider
+import com.ht.ensemble.ai.Provider
 import com.ht.hjtk.engine.AiHealth
 import com.ht.hjtk.engine.Scoreboard
 import kotlinx.coroutines.launch

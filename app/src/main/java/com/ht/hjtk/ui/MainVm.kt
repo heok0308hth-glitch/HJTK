@@ -8,7 +8,7 @@ import com.ht.hjtk.core.CustomCommand
 import com.ht.hjtk.core.InputRouter
 import com.ht.hjtk.core.Masker
 import com.ht.hjtk.core.Pipeline
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.command.CommandCall
 import com.ht.hjtk.data.Conversation
 import com.ht.hjtk.data.Msg
 import com.ht.hjtk.data.Role
@@ -79,7 +79,7 @@ class MainVm(val h: Hjtk) {
     /** HJTK 안 브라우저로 열 주소 */
     val webUrl = MutableStateFlow("")
     /** AI 로그인 화면에서 열 회사 */
-    val loginTab = MutableStateFlow(com.ht.hjtk.core.ai.Provider.CLAUDE)
+    val loginTab = MutableStateFlow(com.ht.ensemble.ai.Provider.CLAUDE)
     fun openWeb(url: String) { webUrl.value = url; go(Route.Browser) }
     val difficulty = MutableStateFlow(h.ai.state.value.difficulty)
 

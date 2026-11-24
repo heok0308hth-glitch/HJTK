@@ -1,17 +1,17 @@
 package com.ht.hjtk.engine
 
 import android.content.Context
-import com.ht.hjtk.core.agent.LlmPort
-import com.ht.hjtk.core.agent.LlmReply
-import com.ht.hjtk.core.ai.Assignment
-import com.ht.hjtk.core.ai.Member
-import com.ht.hjtk.core.ai.ModelRouter
-import com.ht.hjtk.core.ai.Provider
-import com.ht.hjtk.core.ai.Role
-import com.ht.hjtk.core.ai.Difficulty
-import com.ht.hjtk.core.ai.Tokens
-import com.ht.hjtk.core.ai.TokenLedger
-import com.ht.hjtk.core.ai.Transport
+import com.ht.ensemble.agent.LlmPort
+import com.ht.ensemble.agent.LlmReply
+import com.ht.ensemble.ai.Assignment
+import com.ht.ensemble.ai.Member
+import com.ht.ensemble.ai.ModelRouter
+import com.ht.ensemble.ai.Provider
+import com.ht.ensemble.ai.Role
+import com.ht.ensemble.ai.Difficulty
+import com.ht.ensemble.ai.Tokens
+import com.ht.ensemble.ai.TokenLedger
+import com.ht.ensemble.ai.Transport
 import com.ht.hjtk.data.Store
 import com.ht.hjtk.tools.TapBudget
 import kotlinx.coroutines.Dispatchers
@@ -161,7 +161,7 @@ class AiHub(private val ctx: Context, private val store: Store, private val brid
         val pin = s.chatPin
         if (pin != "auto") {
             val (key, model) = pin.split("|").let { it[0] to it.getOrNull(1) }
-            members().firstOrNull { it.key == key }?.let { m -> val mm = model?.let { m.copy(pinnedModel = it) } ?: m; return Assignment(Role.CHAT, mm, ModelRouter.modelFor(mm, com.ht.hjtk.core.ai.Tier.BALANCED), "직접 선택") }
+            members().firstOrNull { it.key == key }?.let { m -> val mm = model?.let { m.copy(pinnedModel = it) } ?: m; return Assignment(Role.CHAT, mm, ModelRouter.modelFor(mm, com.ht.ensemble.ai.Tier.BALANCED), "직접 선택") }
         }
         return ModelRouter.pick(Role.CHAT, Difficulty.STANDARD, members())
     }
@@ -204,7 +204,7 @@ class AiHub(private val ctx: Context, private val store: Store, private val brid
     /** 키 확인: 짧은 요청 하나 */
     suspend fun test(acc: AiAccount): String {
         val k = key(acc) ?: return "키가 없어요"
-        val model = com.ht.hjtk.core.ai.ModelCatalog.forTier(acc.provider, com.ht.hjtk.core.ai.Tier.FAST)?.id ?: return "모델 없음"
+        val model = com.ht.ensemble.ai.ModelCatalog.forTier(acc.provider, com.ht.ensemble.ai.Tier.FAST)?.id ?: return "모델 없음"
         val r = ApiStream.chat(acc.provider, acc.baseUrl.ifBlank { acc.provider.defaultBase }, k, model, listOf("user" to "Reply with exactly: OK"), null, GenPrefs(maxTokens = 16)) { _ -> }
         return r.error ?: "연결됨 · $model · ${r.text.take(20)}"
     }

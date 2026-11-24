@@ -1,10 +1,11 @@
 package com.ht.hjtk
 
-import com.ht.hjtk.core.aegis.ApprovalGate
+import com.ht.ensemble.aegis.ApprovalGate
 import com.ht.hjtk.core.agent.*
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.CommandCall
 import com.ht.hjtk.core.command.CommandCatalog
-import com.ht.hjtk.core.command.CommandResult
+import com.ht.ensemble.command.CommandResult
 import com.ht.hjtk.core.command.PureHandlers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals

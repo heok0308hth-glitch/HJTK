@@ -1,6 +1,6 @@
 package com.ht.hjtk
 
-import com.ht.hjtk.core.ai.*
+import com.ht.ensemble.ai.*
 import com.ht.hjtk.core.command.CommandCatalog
 import com.ht.hjtk.core.command.PhoneGuard
 import org.junit.Assert.*

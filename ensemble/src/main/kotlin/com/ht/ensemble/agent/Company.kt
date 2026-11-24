@@ -1,12 +1,12 @@
-package com.ht.hjtk.core.agent
+package com.ht.ensemble.agent
 
-import com.ht.hjtk.core.aegis.ApprovalGate
-import com.ht.hjtk.core.ai.AiProfiles
-import com.ht.hjtk.core.ai.AiProfiles.Skill
-import com.ht.hjtk.core.ai.Difficulty
-import com.ht.hjtk.core.ai.TokenLedger
-import com.ht.hjtk.core.ai.Tokens
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.aegis.ApprovalGate
+import com.ht.ensemble.ai.AiProfiles
+import com.ht.ensemble.ai.AiProfiles.Skill
+import com.ht.ensemble.ai.Difficulty
+import com.ht.ensemble.ai.TokenLedger
+import com.ht.ensemble.ai.Tokens
+import com.ht.ensemble.command.CommandCall
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -137,7 +137,8 @@ class Company(
         if (!resumed) kickoff()
         // 이어하기(앱이 꺼졌다 켜진 경우만): 끝나지 않은 티켓부터
         if (resumed && sprint > 0) tickets.filter { it.status == "todo" }.takeIf { it.isNotEmpty() }?.let { runSprint(it); retro() }
-        while (sprint < maxSprints && left() > reserve) {
+        // 첫 스프린트는 시간이 짧아도 반드시 한다(결과물이 하나도 없는 프로젝트는 없다)
+        while (sprint < maxSprints && (sprint == 0 || left() > reserve)) {
             if (sprint == 0) { sprint = 1; runSprint(tickets.filter { it.sprint == 1 && it.status != "done" }); retro(); continue }
             val nextTickets = standup() ?: break
             sprint++

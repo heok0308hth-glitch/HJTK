@@ -35,3 +35,6 @@
 # 3.6 APK 포장기
 -keep class com.android.apksig.** { *; }
 -dontwarn com.android.apksig.**
+
+# 3.7 Ensemble SDK — 저장된 이름(Difficulty·Provider 등 enum)으로 다시 읽으므로 이름을 바꾸지 않는다
+-keep class com.ht.ensemble.** { *; }

@@ -1,31 +1,26 @@
 package com.ht.hjtk.core.agent
 
-import com.ht.hjtk.core.aegis.ApprovalGate
-import com.ht.hjtk.core.aegis.ApprovalSummaries
-import com.ht.hjtk.core.aegis.Canonical
-import com.ht.hjtk.core.aegis.NormalizedAction
-import com.ht.hjtk.core.aegis.Policy
-import com.ht.hjtk.core.aegis.PolicyDecision
-import com.ht.hjtk.core.aegis.PolicyInput
-import com.ht.hjtk.core.command.CommandCall
-import com.ht.hjtk.core.command.CommandResult
-import com.ht.hjtk.core.command.CommandSpec
-import com.ht.hjtk.core.command.Effect
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.*
+
+import com.ht.ensemble.aegis.ApprovalGate
+import com.ht.ensemble.aegis.ApprovalSummaries
+import com.ht.ensemble.aegis.Canonical
+import com.ht.ensemble.aegis.NormalizedAction
+import com.ht.ensemble.aegis.Policy
+import com.ht.ensemble.aegis.PolicyDecision
+import com.ht.ensemble.aegis.PolicyInput
+import com.ht.ensemble.command.CommandCall
+import com.ht.ensemble.command.CommandResult
+import com.ht.ensemble.command.CommandSpec
+import com.ht.ensemble.command.Effect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 
-class JobControl {
-    enum class Signal { RUN, PAUSE, ABORT }
-    val signal = MutableStateFlow(Signal.RUN)
-    fun pause() { if (signal.value != Signal.ABORT) signal.value = Signal.PAUSE }
-    fun resume() { if (signal.value != Signal.ABORT) signal.value = Signal.RUN }
-    fun abort() { signal.value = Signal.ABORT }
-}
 
 data class LoopConfig(val maxTurns: Int = 40, val maxCmdsPerTurn: Int = 6, val autoAllowE2: Boolean = false, val maxWaitSec: Int = 600)
 
-data class LoopOutcome(val state: JobState, val final: String, val turns: Int, val label: String)
 
 /**
  * 오케스트레이션 루프. 이해는 모델에게, 판단은 코드에게.

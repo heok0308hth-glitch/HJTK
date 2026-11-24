@@ -1,26 +1,17 @@
 package com.ht.hjtk.core.agent
 
+import com.ht.ensemble.agent.*
+import com.ht.ensemble.command.*
+
 import com.ht.hjtk.core.aep.AepHeader
 import com.ht.hjtk.core.aep.AepParser
 import com.ht.hjtk.core.aep.Envelope
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.command.CommandCall
 import com.ht.hjtk.core.command.CommandCatalog
-import com.ht.hjtk.core.command.CommandResult
+import com.ht.ensemble.command.CommandResult
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class AgentContext(
-    val jobId: String,
-    val goal: String,
-    val nowText: String,
-    val memories: List<String> = emptyList(),
-    val hubSites: List<String> = emptyList(),
-    val hubApps: List<String> = emptyList(),
-    val skills: List<String> = emptyList(),
-    val activeSkillGuide: String? = null,
-    val userName: String? = null,
-    val disabledCommands: Set<String> = emptySet()
-)
 
 object AgentProtocol {
     private val parser = AepParser()

@@ -44,7 +44,10 @@ jobs:
         run: bash tools/review-gate.sh app/src/main
 
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest :voicecore:test --no-daemon --stacktrace
+        run: ./gradlew :ensemble:test :app:testDebugUnitTest :voicecore:test --no-daemon --stacktrace
+
+      - name: SDK — build, sample, local publish
+        run: ./gradlew :samples:cli:run --args="--demo" :ensemble:publishToMavenLocal --no-daemon
 
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace

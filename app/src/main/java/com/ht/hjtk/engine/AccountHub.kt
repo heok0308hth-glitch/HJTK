@@ -2,7 +2,7 @@ package com.ht.hjtk.engine
 
 import android.content.Context
 import android.webkit.CookieManager
-import com.ht.hjtk.core.ai.Provider
+import com.ht.ensemble.ai.Provider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

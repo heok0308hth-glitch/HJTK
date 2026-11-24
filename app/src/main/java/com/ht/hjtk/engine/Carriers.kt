@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
-import com.ht.hjtk.core.agent.LlmPort
-import com.ht.hjtk.core.agent.LlmReply
+import com.ht.ensemble.agent.LlmPort
+import com.ht.ensemble.agent.LlmReply
 import com.ht.hjtk.data.Store
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -103,7 +103,7 @@ class DeepSeekApi(private val store: Store) : LlmPort {
         val content = runCatching { JSONObject(r.body).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content") }.getOrNull()
             ?: return LlmReply("", "HTTP_${r.code}", false, System.currentTimeMillis() - t0)
         msgs.put(JSONObject().put("role", "assistant").put("content", content))
-        UsageLog.add("DeepSeek API", com.ht.hjtk.core.ai.Tokens.estimate(text), com.ht.hjtk.core.ai.Tokens.estimate(content))
+        UsageLog.add("DeepSeek API", com.ht.ensemble.ai.Tokens.estimate(text), com.ht.ensemble.ai.Tokens.estimate(content))
         return LlmReply(content, "L1_API", true, System.currentTimeMillis() - t0)
     }
 }
@@ -140,7 +140,7 @@ class ExternalAiBridge(private val ctx: Context, private val launcher: Launcher)
     suspend fun ask(t: Target, prompt: String, useWeb: Boolean, waitMs: Long, jobTag: String): LlmReply =
         // 3.0: 다른 AI 앱으로 넘기지 않는다(키가 있는 API 또는 HJTK 안 DeepSeek 웹만 쓴다)
         if (!ALLOW_APP_SWITCH) LlmReply("", "NO_APP_SWITCH", false, 0) else askRaw(t, prompt, useWeb, waitMs, jobTag).also { r ->
-            if (r.text.isNotBlank()) UsageLog.add("${t.name} 앱", com.ht.hjtk.core.ai.Tokens.estimate(prompt), com.ht.hjtk.core.ai.Tokens.estimate(r.text))
+            if (r.text.isNotBlank()) UsageLog.add("${t.name} 앱", com.ht.ensemble.ai.Tokens.estimate(prompt), com.ht.ensemble.ai.Tokens.estimate(r.text))
         }
 
     private suspend fun askRaw(t: Target, prompt: String, useWeb: Boolean, waitMs: Long, jobTag: String): LlmReply {

@@ -26,7 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ht.hjtk.core.agent.StageBus
+import com.ht.ensemble.agent.StageBus
 import com.ht.hjtk.engine.LiveBus
 import kotlinx.coroutines.delay
 

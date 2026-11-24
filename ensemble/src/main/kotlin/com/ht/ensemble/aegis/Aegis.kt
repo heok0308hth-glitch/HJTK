@@ -1,7 +1,7 @@
-package com.ht.hjtk.core.aegis
+package com.ht.ensemble.aegis
 
-import com.ht.hjtk.core.command.CommandSpec
-import com.ht.hjtk.core.command.Effect
+import com.ht.ensemble.command.CommandSpec
+import com.ht.ensemble.command.Effect
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest

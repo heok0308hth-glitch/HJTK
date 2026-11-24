@@ -23,10 +23,10 @@ import com.ht.hjtk.core.Pipeline
 import com.ht.hjtk.core.PipelineCompiler
 import com.ht.hjtk.core.PipelineStep
 import com.ht.hjtk.core.Skill
-import com.ht.hjtk.core.command.Category
-import com.ht.hjtk.core.command.CommandCall
+import com.ht.ensemble.command.Category
+import com.ht.ensemble.command.CommandCall
 import com.ht.hjtk.core.command.CommandCatalog
-import com.ht.hjtk.core.command.CommandSpec
+import com.ht.ensemble.command.CommandSpec
 
 @Composable
 fun ToolsScreen(vm: MainVm) {

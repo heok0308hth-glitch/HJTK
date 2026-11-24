@@ -1,11 +1,11 @@
-package com.ht.hjtk.core.agent
+package com.ht.ensemble.agent
 
-import com.ht.hjtk.core.ai.AiProfiles
+import com.ht.ensemble.ai.AiProfiles
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
 /** 지휘자가 부리는 팀원 하나(같은 회사라도 API·웹은 따로) */
-data class CrewMember(val key: String, val name: String, val provider: com.ht.hjtk.core.ai.Provider, val lanes: Int = 1, val free: Boolean = true) {
+data class CrewMember(val key: String, val name: String, val provider: com.ht.ensemble.ai.Provider, val lanes: Int = 1, val free: Boolean = true) {
     fun score(s: AiProfiles.Skill) = AiProfiles.score(provider, s)
 }
 

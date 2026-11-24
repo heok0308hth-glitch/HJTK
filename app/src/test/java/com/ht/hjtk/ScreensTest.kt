@@ -1,8 +1,8 @@
 package com.ht.hjtk
 
-import com.ht.hjtk.core.agent.StageBus.S as StS
-import com.ht.hjtk.core.agent.StageBus.Card as SCard
-import com.ht.hjtk.core.agent.StageBus.Stage as SStage
+import com.ht.ensemble.agent.StageBus.S as StS
+import com.ht.ensemble.agent.StageBus.Card as SCard
+import com.ht.ensemble.agent.StageBus.Stage as SStage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -175,21 +175,21 @@ class ScreensTest {
     /** 3.3 지휘자 무대: 센터 Claude + 병렬로 일하는 팀원 카드(교체·완료·실행) */
     private fun seedStage(id: String) {
         val now = System.currentTimeMillis()
-        com.ht.hjtk.core.agent.StageBus.put(com.ht.hjtk.core.agent.StageBus.Stage(id, "디자인 공모전 준비", "Claude", "CLAUDE", "실행", listOf(
-            com.ht.hjtk.core.agent.StageBus.Card("t1", "공모전 4곳 조사", "Gemini", "GEMINI", StS.DONE, "12개 후보 · 2,140자", now - 95_000, now - 51_000, peer = "ChatGPT 확인 · 주의 남김"),
-            com.ht.hjtk.core.agent.StageBus.Card("t2", "요강 정독 · 자격 확인", "GPT", "GPT", StS.RUN, "읽는 중 · 서울 공공디자인 요강", now - 38_000),
-            com.ht.hjtk.core.agent.StageBus.Card("t3", "마감·상금 비교표", "DeepSeek", "DEEPSEEK", StS.RUN, "표로 정리하는 중", now - 21_000),
-            com.ht.hjtk.core.agent.StageBus.Card("t4", "최신 수상작 경향", "Grok", "GROK", StS.SWAP, "GPT 사용량 한도 → Grok로 교체", now - 9_000),
-            com.ht.hjtk.core.agent.StageBus.Card("t5", "제출물 초안", "ChatGPT", "GPT", StS.WAIT, "t2·t3 끝나면 시작"),
+        com.ht.ensemble.agent.StageBus.put(com.ht.ensemble.agent.StageBus.Stage(id, "디자인 공모전 준비", "Claude", "CLAUDE", "실행", listOf(
+            com.ht.ensemble.agent.StageBus.Card("t1", "공모전 4곳 조사", "Gemini", "GEMINI", StS.DONE, "12개 후보 · 2,140자", now - 95_000, now - 51_000, peer = "ChatGPT 확인 · 주의 남김"),
+            com.ht.ensemble.agent.StageBus.Card("t2", "요강 정독 · 자격 확인", "GPT", "GPT", StS.RUN, "읽는 중 · 서울 공공디자인 요강", now - 38_000),
+            com.ht.ensemble.agent.StageBus.Card("t3", "마감·상금 비교표", "DeepSeek", "DEEPSEEK", StS.RUN, "표로 정리하는 중", now - 21_000),
+            com.ht.ensemble.agent.StageBus.Card("t4", "최신 수상작 경향", "Grok", "GROK", StS.SWAP, "GPT 사용량 한도 → Grok로 교체", now - 9_000),
+            com.ht.ensemble.agent.StageBus.Card("t5", "제출물 초안", "ChatGPT", "GPT", StS.WAIT, "t2·t3 끝나면 시작"),
         ), progress = 0.46, note = "후보 비교표", board = listOf("Gemini · 사실 · 서울 공공디자인 마감 12월 12일(공고문)", "ChatGPT · 주의 · 한글 타이포 상금 300만→200만으로 정정", "DeepSeek · 질문 · 팀 출품 허용 여부 확인 필요")))
         com.ht.hjtk.engine.LiveBus.put(id, "GPT", "참가 자격은 만 19세 이상 개인 또는 3인 이하 팀이며, 출품작은 미발표작이어야 합니다")
     }
-    @Test fun s38_stageChat() { seedStage("7F3K9Q2M4XZ"); shot("38_stage_chat") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
-    @Test fun s39_stageJob() { seedStage("7F3K9Q2M4XZ"); vm.go(Route.Job("7F3K9Q2M4XZ")); shot("39_stage_job") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
+    @Test fun s38_stageChat() { seedStage("7F3K9Q2M4XZ"); shot("38_stage_chat") { HjtkApp(vm) }; com.ht.ensemble.agent.StageBus.drop("7F3K9Q2M4XZ") }
+    @Test fun s39_stageJob() { seedStage("7F3K9Q2M4XZ"); vm.go(Route.Job("7F3K9Q2M4XZ")); shot("39_stage_job") { HjtkApp(vm) }; com.ht.ensemble.agent.StageBus.drop("7F3K9Q2M4XZ") }
     /** 3.5 회사 모드: 스프린트 3 · 남은 시간 · 품질 · 티켓 보드 · 산출물 */
     private fun seedProject(id: String) {
         val now = System.currentTimeMillis()
-        com.ht.hjtk.core.agent.StageBus.put(SStage(id, "청주 카페 창업 사업계획서", "Claude", "CLAUDE", "스프린트 3", listOf(
+        com.ht.ensemble.agent.StageBus.put(SStage(id, "청주 카페 창업 사업계획서", "Claude", "CLAUDE", "스프린트 3", listOf(
             SCard("S3-1", "재무 민감도 분석", "ChatGPT", "GPT", StS.RUN, "분석하는 중 · 03_재무계획.md", now - 140_000, round = 3),
             SCard("S3-2", "경쟁 카페 5곳 사례", "Gemini", "GEMINI", StS.CHECK, "Grok가 채점하는 중", now - 260_000, round = 3, peer = ""),
             SCard("S3-3", "리스크와 대응", "DeepSeek", "DEEPSEEK", StS.RUN, "리뷰 반영해 다시 쓰는 중 (1)", now - 90_000, round = 3, peer = "ChatGPT 리뷰 7.2 · 수정 2"),
@@ -200,9 +200,9 @@ class ScreensTest {
             sprint = 3, deadline = now + 58 * 60_000L + 12_000, quality = 8.3, budgetMin = 120,
             files = listOf("01_시장조사.md|6214|8.4", "02_사업모델.md|4870|8.7", "03_재무계획.md|5102|7.6", "04_실행계획.md|2980|8.1", "05_리스크.md|0|")))
     }
-    @Test fun s41_projectChat() { seedProject("7F3K9Q2M4XZ"); shot("41_project_chat") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
-    @Test fun s42_projectJob() { seedProject("7F3K9Q2M4XZ"); vm.go(Route.Job("7F3K9Q2M4XZ")); shot("42_project_job") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
-    @Test fun s43_projectPicker() { vm.mode.value = Mode.MISSION; vm.difficulty.value = com.ht.hjtk.core.ai.Difficulty.PROJECT; vm.store.updateSettings { it.copy(projectMinutes = 120) }; shot("43_project_time") { HjtkApp(vm) }; vm.difficulty.value = com.ht.hjtk.core.ai.Difficulty.STANDARD; vm.mode.value = Mode.AUTO }
+    @Test fun s41_projectChat() { seedProject("7F3K9Q2M4XZ"); shot("41_project_chat") { HjtkApp(vm) }; com.ht.ensemble.agent.StageBus.drop("7F3K9Q2M4XZ") }
+    @Test fun s42_projectJob() { seedProject("7F3K9Q2M4XZ"); vm.go(Route.Job("7F3K9Q2M4XZ")); shot("42_project_job") { HjtkApp(vm) }; com.ht.ensemble.agent.StageBus.drop("7F3K9Q2M4XZ") }
+    @Test fun s43_projectPicker() { vm.mode.value = Mode.MISSION; vm.difficulty.value = com.ht.ensemble.ai.Difficulty.PROJECT; vm.store.updateSettings { it.copy(projectMinutes = 120) }; shot("43_project_time") { HjtkApp(vm) }; vm.difficulty.value = com.ht.ensemble.ai.Difficulty.STANDARD; vm.mode.value = Mode.AUTO }
     /** 3.6 결과물 카드: 앱 → 설치·미리보기, 완성본, ZIP */
     @Test fun s44_deliver() {
         val c = vm.store.newConversation("할 일 정원 앱"); vm.convId.value = c.id
@@ -216,9 +216,9 @@ class ScreensTest {
     }
     @Test fun s45_aiHealth() {
         com.ht.hjtk.engine.AiHealth.results.value = mapOf(
-            com.ht.hjtk.core.ai.Provider.GPT to com.ht.hjtk.engine.AiHealth.Check(com.ht.hjtk.core.ai.Provider.GPT, false, 75_000, "", "보냈지만 답을 읽지 못했어요(답 위치를 못 찾음)",
+            com.ht.ensemble.ai.Provider.GPT to com.ht.hjtk.engine.AiHealth.Check(com.ht.ensemble.ai.Provider.GPT, false, 75_000, "", "보냈지만 답을 읽지 못했어요(답 위치를 못 찾음)",
                 """{"url":"https://chatgpt.com/","input":"#prompt-textarea","inputGeneric":true,"send":"button[data-testid=\"send-button\"]","answersCfg":0,"answersAll":0,"login":false,"challenge":false}"""),
-            com.ht.hjtk.core.ai.Provider.DEEPSEEK to com.ht.hjtk.engine.AiHealth.Check(com.ht.hjtk.core.ai.Provider.DEEPSEEK, true, 6_400, "2", "", null))
+            com.ht.ensemble.ai.Provider.DEEPSEEK to com.ht.hjtk.engine.AiHealth.Check(com.ht.ensemble.ai.Provider.DEEPSEEK, true, 6_400, "2", "", null))
         vm.go(Route.AiHealth); shot("45_ai_health") { HjtkApp(vm) }
         com.ht.hjtk.engine.AiHealth.results.value = emptyMap()
     }
