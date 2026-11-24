@@ -13,6 +13,14 @@
 
 > **Don't make tool, make innovation.**
 
+<p align="center">
+  <a href="https://github.com/heok0308hth-glitch/HJTK/releases/download/v3.7.0/HJTK-3.7.0.apk"><b>↓ HJTK 3.7.0 APK 내려받기</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/heok0308hth-glitch/HJTK/releases/tag/v3.7.0">릴리스 노트</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/heok0308hth-glitch/HJTK/releases">이전 버전</a>
+</p>
+
 **HJTK** is a personal Android assistant that ships **no AI model of its own**. It conducts the AIs you already use — Claude, ChatGPT, Gemini, Grok and DeepSeek — by signing into their web apps inside the app (no API key required). In **Project mode** they run like a small company for 30 minutes to 3 hours. A PM writes a charter with a project-specific rubric. The team works in sprints of tickets, where one ticket is one file. Every ticket is scored by a *different company's* AI the way a code review would score it, and anything below 8/10 goes back for revision. Stand-ups re-plan with the time that remains. A final QA and a project report close it out. The result is then handed to you in a usable form. If the team built an app, HJTK packages it **on the phone into an installable, signed APK**. If it wrote documents, you get one bound, printable edition. Progress is checkpointed, so it survives app restarts. Anything that leaves the phone waits for one tap on **실행**.
 
 **For developers:** the orchestration engine is published as **[Ensemble](https://github.com/heok0308hth-glitch/ensemble)**, an open-source Kotlin multi-agent orchestration library with no Android dependency (its own repository, English prompts, benchmark and simulator). The `ensemble/` folder here is the copy the app ships with. Use it to make Claude, GPT, Gemini, Grok, DeepSeek or local Ollama models work as one team in your own JVM, server or Android project.
@@ -216,6 +224,13 @@ ear/           통화 귀(접근성) — 본체 설치가 Play 프로텍트에 �
 ```
 
 Kotlin·Java 약 17,000줄 · 모듈 6개 · 명령어 150개 이상.
+
+## 설치
+
+- **[HJTK-3.7.0.apk](https://github.com/heok0308hth-glitch/HJTK/releases/download/v3.7.0/HJTK-3.7.0.apk)** — Android 9(API 28) 이상 · arm64-v8a · 약 20MB. [릴리스 노트 · 이전 버전](https://github.com/heok0308hth-glitch/HJTK/releases)
+- 내려받은 APK를 열고, 처음 한 번 "HJTK에서 앱 설치 허용"을 켜면 됩니다. Play 프로텍트가 검사 화면을 띄울 수 있습니다.
+- 이 APK에는 개인 목소리 지문이 들어 있지 않습니다. AI 통화에서 내 목소리를 쓰려면 앱에서 직접 등록하세요.
+- 소스에서 빌드하려면 아래 '검증'의 명령을 쓰고, 릴리스 서명 설정은 그 아래를 참고하세요.
 
 ## 검증
 
