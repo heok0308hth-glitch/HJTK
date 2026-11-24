@@ -8,14 +8,14 @@
   <img src="https://img.shields.io/badge/Jetpack_Compose-BOM_2025.05-0E0E0E?style=flat-square" alt="compose">
   <img src="https://img.shields.io/badge/tests-135_passing-0E0E0E?style=flat-square" alt="tests">
   <img src="https://img.shields.io/badge/license-MIT-0E0E0E?style=flat-square" alt="license">
-  <a href="ensemble/README.md"><img src="https://img.shields.io/badge/SDK-Ensemble_0.1.0-E44D2E?style=flat-square" alt="Ensemble SDK"></a>
+  <a href="https://github.com/heok0308hth-glitch/ensemble"><img src="https://img.shields.io/badge/SDK-Ensemble_0.1.0-E44D2E?style=flat-square" alt="Ensemble SDK"></a>
 </p>
 
 > **Don't make tool, make innovation.**
 
 **HJTK** is a personal Android assistant that ships **no AI model of its own**. It conducts the AIs you already use — Claude, ChatGPT, Gemini, Grok and DeepSeek — by signing into their web apps inside the app (no API key required). In **Project mode** they run like a small company for 30 minutes to 3 hours. A PM writes a charter with a project-specific rubric. The team works in sprints of tickets, where one ticket is one file. Every ticket is scored by a *different company's* AI the way a code review would score it, and anything below 8/10 goes back for revision. Stand-ups re-plan with the time that remains. A final QA and a project report close it out. The result is then handed to you in a usable form. If the team built an app, HJTK packages it **on the phone into an installable, signed APK**. If it wrote documents, you get one bound, printable edition. Progress is checkpointed, so it survives app restarts. Anything that leaves the phone waits for one tap on **실행**.
 
-**For developers:** the orchestration engine is published as **[Ensemble](ensemble/README.md)**, a lightweight Kotlin multi-agent orchestration SDK with no Android dependency. Use it to make Claude, GPT, Gemini, Grok, DeepSeek or local Ollama models work as one team in your own JVM, server or Android project.
+**For developers:** the orchestration engine is published as **[Ensemble](https://github.com/heok0308hth-glitch/ensemble)**, an open-source Kotlin multi-agent orchestration library with no Android dependency (its own repository, English prompts, benchmark and simulator). The `ensemble/` folder here is the copy the app ships with. Use it to make Claude, GPT, Gemini, Grok, DeepSeek or local Ollama models work as one team in your own JVM, server or Android project.
 
 ```kotlin
 val team = Ensemble.team {
