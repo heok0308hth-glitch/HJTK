@@ -2,7 +2,7 @@
    한 번 넣으면 window.__hjtkAi 가 생긴다. 설정(CFG)은 앱이 사이트별로 앞에 붙여 준다.
    원칙: 화면에 보이는 입력창에 글을 넣고 보내기를 누른 뒤, 마지막 답 요소의 글자를 읽는다. 클릭은 보내기 한 번뿐. */
 (function () {
-  if (window.__hjtkAi && window.__hjtkAi.v === 4) { window.__hjtkAi.cfg = window.__HJTK_CFG || window.__hjtkAi.cfg; return; }
+  if (window.__hjtkAi && window.__hjtkAi.v === 5) { window.__hjtkAi.cfg = window.__HJTK_CFG || window.__hjtkAi.cfg; return; }
   var cfg = window.__HJTK_CFG || {};
   function q(list) {
     for (var i = 0; i < (list || []).length; i++) {
@@ -32,7 +32,7 @@
     return !!document.querySelector('input[type=password], input[type=email], input[name=email], input[autocomplete=username]');
   }
   var api = {
-    v: 4, cfg: cfg,
+    v: 5, cfg: cfg,
     input: function () {
       var el = q(api.cfg.input); if (el) return el;
       // 사이트가 바뀌어 지정한 자리를 못 찾으면: 화면 아래쪽의 넓은 입력칸(채팅 입력창의 공통 모양)
@@ -54,6 +54,21 @@
     mark: function () { var els = answers(); for (var i = 0; i < els.length; i++) els[i].setAttribute('data-hjtk-seen', '1'); return String(els.length); },
     fresh: function () { var els = answers(), n = 0; for (var i = 0; i < els.length; i++) if (!els[i].closest('[data-hjtk-seen]')) n++; return String(n); },
     lastFresh: function () { var els = answers(); for (var i = els.length - 1; i >= 0; i--) if (!els[i].closest('[data-hjtk-seen]')) return text(els[i]); return ''; },
+    /* 3.6 진단: 지금 화면에서 무엇을 찾았고 무엇을 못 찾았는지(입력창·보내기·답·로그인·보안 확인) */
+    probe: function () {
+      function hit(list) { for (var i = 0; i < (list || []).length; i++) { try { var e = document.querySelector(list[i]); if (e) return list[i]; } catch (x) {} } return ''; }
+      var body = (document.body && document.body.innerText) || '';
+      var eds = document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]');
+      var labels = [].slice.call(document.querySelectorAll('button[aria-label]')).slice(0, 14).map(function (b) { return b.getAttribute('aria-label'); });
+      return JSON.stringify({
+        url: location.href.slice(0, 120), title: document.title.slice(0, 60), state: api.state(),
+        input: hit(api.cfg.input), inputGeneric: !!api.input(), editables: eds.length,
+        send: hit(api.cfg.send), stop: hit(api.cfg.stop),
+        answersCfg: all(api.cfg.answer).length, answersAll: answers().length,
+        login: /log ?in|sign ?in|로그인/i.test(body.slice(0, 3000)), challenge: /verify you are human|로봇이 아닙니다|captcha|challenge/i.test(body.slice(0, 3000)),
+        buttons: labels, iframes: document.querySelectorAll('iframe').length, textLen: body.length
+      });
+    },
     /* 멈춤: 생성 중이면 사이트의 '중지' 버튼을 누른다 */
     stop: function () { var b = q(api.cfg.stop); if (b) { b.click(); return 'STOPPED'; } return 'IDLE'; },
     busy: function () {

@@ -70,10 +70,13 @@ fun HubScreen(vm: MainVm) {
     var addCmd by remember { mutableStateOf(false) }; var cT by remember { mutableStateOf("") }; var cE by remember { mutableStateOf("") }; var cM by remember { mutableStateOf(true) }
     var pickApps by remember { mutableStateOf(false) }
 
+    val healthResults by com.ht.hjtk.engine.AiHealth.results.collectAsState()
     key(tick) {
         val cal = Perms.granted(ctx, Manifest.permission.READ_CALENDAR)
         val con = Perms.granted(ctx, Manifest.permission.READ_CONTACTS)
         val gemApp = vm.h.bridge.installed(ExternalAiBridge.GEMINI)
+        val healthReady = com.ht.hjtk.engine.AiHealth.ALL.count { com.ht.hjtk.engine.AiHealth.route(vm.h, it) != null }
+        val healthBad = healthResults.values.filter { !it.ok }.map { it.provider.label }
         val connectors = listOf(
             Connector("DeepSeek", if (ds == DeepSeekWeb.Status.READY) "두뇌 · 키 없이 연결됨" else "두뇌 · 한 번 로그인", if (ds == DeepSeekWeb.Status.READY) 2 else 1, I.Spark) { vm.go(Route.Cockpit) },
             Connector(I18n.t("계정 하나로"), com.ht.hjtk.engine.WebAiHub.loggedIn.value.let { s -> if (s.isEmpty()) "구글 하나면 AI·메일·메모·드라이브 전부" else "AI " + s.size + "개 연결 · " + s.joinToString(" · ") { it.label } }, if (com.ht.hjtk.engine.WebAiHub.loggedIn.value.isNotEmpty()) 2 else 1, I.Key) { vm.go(Route.AiLogin) },
@@ -83,6 +86,7 @@ fun HubScreen(vm: MainVm) {
             Connector(I18n.t("실시간 음성 대화"), "말로 묻고 듣기 · 손을 떼도 이어서", 2, I.Chat) { vm.go(Route.Live) },
             Connector(I18n.t("PC에서 쓰기"), "같은 와이파이의 PC 브라우저로 HJTK 열기", 0, I.Globe) { vm.go(Route.Pc) },
             Connector(I18n.t("루틴"), com.ht.hjtk.engine.Routines.list.value.let { l -> if (l.isEmpty()) "정해 둔 시각에 AI가 알아서 일하기" else l.filter { it.enabled }.joinToString(" · ") { it.title }.ifBlank { "모두 꺼짐" } }, if (com.ht.hjtk.engine.Routines.list.value.any { it.enabled }) 2 else 0, I.Cal) { vm.go(Route.Routines) },
+            Connector(I18n.t("AI 상태 점검"), if (healthBad.isNotEmpty()) healthBad.joinToString("·") + " 문제 있음 · 눌러서 이유 보기" else "팀에 들어올 수 있는 AI $healthReady/5 · 일을 못 하면 이유를 보여 줘요", if (healthBad.isEmpty() && healthReady >= 3) 2 else 1, I.Check) { vm.go(Route.AiHealth) },
             (st.secrets.has("github_token") || vm.h.connectors.token(com.ht.hjtk.engine.Service.GITHUB) != null).let { gh ->
                 Connector("GitHub", if (gh) "연결됨 · '깃허브에 올려줘'로 결과물 올리기" else "선택 · 토큰 한 번이면 결과물을 저장소로", if (gh) 2 else 0, I.Globe) { vm.go(Route.GitHub) } },
             Connector(I18n.t("사용량"), "AI별 토큰 · 최근 7일", 2, I.Eye) { vm.go(Route.Usage) },

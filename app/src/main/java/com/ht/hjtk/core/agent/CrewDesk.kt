@@ -35,6 +35,18 @@ class CrewDesk(
     val board = Board()
     val busy = ConcurrentHashMap<String, AtomicInteger>()
     val credit = ConcurrentHashMap<String, AtomicInteger>()
+    /** 실패 기록(누가 · 왜) — 'GPT가 일을 안 한 건지 못 한 건지'를 보고서에 남기려고 */
+    val fails = ConcurrentHashMap<String, java.util.concurrent.ConcurrentLinkedQueue<String>>()
+    private fun failed(m: CrewMember, text: String, via: String) {
+        val why = when { AiProfiles.limitHit(text, via) -> "사용량 한도"; via.contains("LOGIN") -> "로그인 풀림"; via.contains("CHALLENGE") -> "보안 확인"; via.contains("NO_INPUT") -> "입력창 못 찾음"
+            via.contains("NOT_READY") || via.contains("NO_WEB") -> "화면 준비 안 됨"; via.contains("NO_ANSWER") -> "답을 못 읽음"; text.isBlank() -> "빈 답"; else -> "답 부실" }
+        fails.getOrPut(m.key) { java.util.concurrent.ConcurrentLinkedQueue() }.add(why)
+    }
+    /** AI별 성적: 끝낸 일 · 실패와 이유 */
+    fun roll(): List<Triple<String, Int, String>> = team.map { m ->
+        val f = fails[m.key]?.toList().orEmpty()
+        Triple(m.name, creditOf(m), if (f.isEmpty()) "" else f.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.joinToString(", ") { "${it.key} ${it.value}" })
+    }
     private val rr = ConcurrentHashMap<String, AtomicInteger>()
     private val lanes = ConcurrentHashMap<String, Semaphore>()
 
@@ -84,6 +96,7 @@ class CrewDesk(
             val text = r.text.trim()
             val ok = text.length >= minLen && !refusal(text) && !AiProfiles.limitHit(r.text, r.via)
             crew.report(cur, ok, clock() - t0, r.text, r.via)
+            if (!ok) failed(cur, text, r.via)
             if (ok) { ledger.add(cur.name, Tokens.estimate(prompt), Tokens.estimate(text)); thank(cur); return text }
             val alt = next(skill, tried) ?: break
             val why = when { AiProfiles.limitHit(r.text, r.via) || !crew.available(cur) -> "사용량 한도"; r.via.contains("LOGIN") -> "로그인 필요"; text.isBlank() -> "답이 없어서"; else -> "답이 부실해서" }
@@ -104,6 +117,7 @@ class CrewDesk(
         val ok = r.text.isNotBlank() && !AiProfiles.limitHit(r.text, r.via)
         crew.report(m, ok, clock() - t0, r.text, r.via)
         ledger.add(m.name, Tokens.estimate(prompt), Tokens.estimate(r.text))
+        if (!ok) failed(m, r.text, r.via)
         if (ok) return r.text
         val alt = next(Skill.PLAN, setOf(m.key), allowCenter = true) ?: return ""
         if (takeOver) { center = alt; StageBus.edit(jobId) { it.copy(center = alt.name, centerProvider = alt.provider.name) }; emit(AgentEvent.Collab(clock(), "센터", alt.name, "${m.name} 대신 센터를 맡아요")) }
@@ -116,7 +130,9 @@ class CrewDesk(
         val t0 = clock()
         hold(m)
         val r = try { send(m, prompt) } finally { release(m) }
-        crew.report(m, r.text.isNotBlank() && !AiProfiles.limitHit(r.text, r.via), clock() - t0, r.text, r.via)
+        val ok = r.text.isNotBlank() && !AiProfiles.limitHit(r.text, r.via)
+        crew.report(m, ok, clock() - t0, r.text, r.via)
+        if (!ok) failed(m, r.text, r.via)
         ledger.add(m.name, Tokens.estimate(prompt), Tokens.estimate(r.text))
         return r
     }

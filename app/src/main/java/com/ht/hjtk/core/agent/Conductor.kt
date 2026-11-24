@@ -47,6 +47,8 @@ class Conductor(
     private val difficulty: Difficulty = Difficulty.STANDARD,
     val ledger: TokenLedger = TokenLedger(),
     private val catalog: String = "",
+    private val files: ProjectFiles? = null,
+    private val deliver: suspend (Company.Delivery) -> List<String> = { emptyList() },
 ) : MissionEngine {
     data class Task(val id: String, val title: String, val who: String, val tool: String = "", val args: Map<String, String> = emptyMap(), val prompt: String = "", val after: List<String> = emptyList(), val round: Int = 0)
     data class Plan(val deliverable: String, val criteria: List<String>, val tasks: List<Task>, val finalWho: String, val finalHow: String, val push: Map<String, String>? = null)
@@ -164,16 +166,29 @@ class Conductor(
         // 완성 → (요청했으면) GitHub
         val name = "결과_" + ctx.goal.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").take(24) + ".md"
         runCatching { tools.run(CommandCall("ship", "task.artifact", mapOf("name" to name, "content" to "# ${p.deliverable}\n\n$draft"))) }
-        var pushNote = ""
+        // 결과물 전달: 코드 블록은 실제 파일로(웹 파일은 app/ — 그대로 APK가 된다), 글은 완성본으로
+        var app = false
+        files?.let { fs ->
+            val code = com.ht.hjtk.core.CodeFiles.extract(draft)
+            val web = code.filter { it.first.substringAfterLast('.') in setOf("html", "css", "js") }
+            if (web.any { it.first.endsWith(".html") }) {
+                app = true
+                val entry = web.firstOrNull { it.first.endsWith("index.html") } ?: web.first { it.first.endsWith(".html") }
+                web.forEach { (f, body) -> fs.write("app/" + (if (f == entry.first) "index.html" else f.substringAfterLast('/')), body) }
+            }
+            code.filter { it !in web }.forEach { (f, body) -> fs.write(f, body) }
+        }
+        val delivered = runCatching { deliver(Company.Delivery(p.deliverable, "", listOf(name), "센터 ${c.name} · HJTK", app)) }.getOrElse { emptyList() }
+        var pushNote = if (delivered.isEmpty()) "" else "\n받은 결과물: " + delivered.joinToString(" · ")
         if (p.push != null || GITHUB.containsMatchIn(ctx.goal)) {
             pauseGate()
             phase("올리기", 0.97, "GitHub에 올리는 중")
             // 결과 글 속 코드 블록을 실제 파일로 풀어 둔다 → 저장소가 바로 쓸 수 있는 모양이 된다
-            com.ht.hjtk.core.CodeFiles.extract(draft).forEach { (f, code) -> runCatching { tools.run(CommandCall("file", "task.artifact", mapOf("name" to f, "content" to code))) } }
+            if (files == null) com.ht.hjtk.core.CodeFiles.extract(draft).forEach { (f, code) -> runCatching { tools.run(CommandCall("file", "task.artifact", mapOf("name" to f, "content" to code))) } }
             val args = (p.push ?: emptyMap()).toMutableMap()
             args.putIfAbsent("repo", repoName(p)); args.putIfAbsent("message", "HJTK: ${p.deliverable.take(60)}")
             val r = exec.run(CommandCall("push", "github.push", args))
-            pushNote = "\nGitHub: " + (if (r.ok) r.text.lineSequence().first() else "올리지 못함 — ${r.text.take(120)}")
+            pushNote += "\nGitHub: " + (if (r.ok) r.text.lineSequence().first() else "올리지 못함 — ${r.text.take(120)}")
         }
         val credits = desk.credits()
         val final = draft.trim() + "\n\n---\n센터 ${c.name} · 일한 AI $credits · 칠판 ${board.all().size} · 난이도 ${difficulty.label} · 토큰 약 ${Tokens.fmt(ledger.total())}\n파일: $name$pushNote"

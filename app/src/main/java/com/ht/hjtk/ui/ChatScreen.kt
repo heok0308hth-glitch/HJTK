@@ -260,6 +260,7 @@ fun MessageView(vm: MainVm, m: Msg, actions: Boolean = false) {
         "final" -> FinalCard(vm, m)
         "card" -> FoldCard(Modifier.fillMaxWidth()) { Label(m.meta["title"] ?: "카드"); Spacer(Modifier.height(6.dp)); MdText(m.text) }
         "artifact" -> ArtifactRow(vm, m)
+        "deliver" -> DeliverCard(vm, m)
         "screen" -> ScreenCard(m)
         "image" -> ImageBubble(m)
         "note" -> Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -505,6 +506,53 @@ private fun ArtifactRow(vm: MainVm, m: Msg) {
         Ico(I.File, 20.dp); Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) { Label(I18n.t("결과물")); Text(m.meta["file"] ?: "", style = T.head.copy(fontSize = 14.sp)) }
         Ico(I.Export, 18.dp)
+    }
+}
+
+/**
+ * 결과물 카드 — 작업이 끝나면 '받는 것'을 한 장에. 앱이면 설치가 첫 버튼, 문서면 열기가 첫 버튼.
+ * 모든 파일은 다운로드/HJTK/프로젝트 이름/ 에도 저장돼 있다.
+ */
+@Composable
+private fun DeliverCard(vm: MainVm, m: Msg) {
+    val ctx = LocalContext.current
+    val root = vm.store.jobDir(m.meta["job"] ?: "manual")
+    fun f(k: String) = m.meta[k]?.let { java.io.File(root, it) }?.takeIf { it.exists() }
+    val apk = f("apk"); val preview = f("preview"); val html = f("html"); val zip = f("zip")
+    FoldCard(Modifier.fillMaxWidth()) {
+        Label(I18n.t("결과물 · 받기"), color = C.Red)
+        Spacer(Modifier.height(6.dp))
+        Text(m.meta["title"] ?: m.text, style = T.title.copy(fontSize = 19.sp))
+        Spacer(Modifier.height(14.dp))
+        apk?.let { a ->
+            DeliverRow(I.Download, "설치 파일(APK)", m.meta["apk_label"] ?: a.name) {
+                InkButton(I18n.t("설치"), accent = true) { vm.installApk(ctx, a) }
+            }
+            preview?.let { p -> Spacer(Modifier.height(8.dp)); DeliverRow(I.Eye, "바로 실행", "설치하지 않고 앱 안에서 열어 보기") { GhostButton(I18n.t("열기")) { vm.go(Route.Preview(p.absolutePath, m.meta["title"] ?: "미리보기")) } } }
+            Spacer(Modifier.height(8.dp))
+        }
+        html?.let { h ->
+            DeliverRow(I.File, "완성본", m.meta["html_label"] ?: h.name) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (apk == null) InkButton(I18n.t("열기")) { vm.go(Route.Preview(h.absolutePath, m.meta["title"] ?: "완성본")) } else GhostButton(I18n.t("열기")) { vm.go(Route.Preview(h.absolutePath, m.meta["title"] ?: "완성본")) }
+                    GhostButton(I18n.t("공유")) { vm.share(ctx, h, "text/html") }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        zip?.let { z -> DeliverRow(I.Export, "프로젝트 ZIP", m.meta["zip_label"] ?: z.name) { GhostButton(I18n.t("공유")) { vm.share(ctx, z, "application/zip") } } }
+        m.meta["saved"]?.let { Spacer(Modifier.height(12.dp)); Text("$it 에도 저장했어요", style = T.mono.copy(fontSize = 11.sp, color = C.Graphite)) }
+    }
+}
+
+@Composable
+private fun DeliverRow(icon: I, title: String, sub: String, action: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(38.dp).clip(RoundedCornerShape(8.dp)).background(C.Paper2), contentAlignment = Alignment.Center) { Ico(icon, 19.dp) }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) { Text(title, style = T.head.copy(fontSize = 14.sp)); Text(sub, style = T.small.copy(fontSize = 12.sp, color = C.Graphite), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        Spacer(Modifier.width(8.dp))
+        action()
     }
 }
 

@@ -33,6 +33,8 @@ sealed interface Route {
     data object Onboarding : Route
     data object Memory : Route
     data class Job(val id: String) : Route
+    /** 3.6: 만든 웹 앱·완성본을 앱 안에서 바로 보기 */
+    data class Preview(val path: String, val title: String) : Route
     data class Command(val id: String) : Route
     data class PipelineEdit(val id: String?) : Route
     data object MailAdd : Route
@@ -46,6 +48,7 @@ sealed interface Route {
     data object Usage : Route
     data object AiLogin : Route
     data object GitHub : Route
+    data object AiHealth : Route
 }
 
 enum class Mode(val label: String) { AUTO("자동"), QUICK("대화"), MISSION("작업 맡기기") }
@@ -164,6 +167,27 @@ class MainVm(val h: Hjtk) {
         val dir = File(ctx.cacheDir, "exports").apply { mkdirs() }
         val f = File(dir, name.replace(Regex("[\\\\/:*?\"<>|]"), "_")); f.writeText(body)
         toast(ctx, saveToDownloads(ctx, f, mime))
+    }
+
+    /** 만든 APK 설치: 처음 한 번은 'HJTK에서 앱 설치 허용'이 필요하다(설정 화면으로 안내) */
+    fun installApk(ctx: Context, f: File) {
+        if (!f.exists()) { toast(ctx, "설치 파일이 없어요"); return }
+        if (android.os.Build.VERSION.SDK_INT >= 26 && !ctx.packageManager.canRequestPackageInstalls()) {
+            toast(ctx, "HJTK의 '앱 설치 허용'을 켠 뒤 다시 눌러 주세요")
+            runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + ctx.packageName)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            return
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+        runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure { toast(ctx, "설치 화면을 열지 못했어요") }
+    }
+
+    /** 공유(사용자가 고른 앱으로) */
+    fun share(ctx: Context, f: File, mime: String) {
+        if (!f.exists()) return
+        val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+        runCatching { ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType(mime).putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), f.name).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
     /** 다른 앱으로 넘기지 않고 '다운로드/HJTK'에 저장한다 */

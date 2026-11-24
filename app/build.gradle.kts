@@ -17,8 +17,8 @@ android {
         applicationId = "com.ht.hjtk"
         minSdk = 28
         targetSdk = 35
-        versionCode = 13
-        versionName = "3.5.0"
+        versionCode = 14
+        versionName = "3.6.0"
         // 음성 엔진(onnxruntime)·글자 인식은 64비트 ARM만 싣는다: 요즘 폰은 전부 arm64, 용량은 절반
         ndk { abiFilters += listOf("arm64-v8a") }
     }
@@ -98,6 +98,8 @@ dependencies {
     implementation(project(":voicecore"))
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
     implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+    // 3.6: 만든 웹 앱을 기기 안에서 설치 가능한 APK로 서명(Apache-2.0, 순수 Java)
+    implementation("com.android.tools.build:apksig:8.10.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
@@ -110,3 +112,14 @@ dependencies {
     testImplementation("androidx.test.ext:junit:1.2.1")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
+// 3.6: APK 포장기용 셸(:shell)을 빌드해 생성 자산(forge/shell.apk)으로 넣는다 — 소스 폴더는 건드리지 않는다
+val forgeDir = layout.buildDirectory.dir("generated/forge")
+val bundleShell by tasks.registering(Copy::class) {
+    dependsOn(":shell:assembleRelease")
+    from(rootProject.file("shell/build/outputs/apk/release/shell-release-unsigned.apk"))
+    into(forgeDir.map { it.dir("forge") })
+    rename { "shell.apk" }
+}
+android.sourceSets.getByName("main").assets.srcDir(forgeDir)
+tasks.named("preBuild") { dependsOn(bundleShell) }

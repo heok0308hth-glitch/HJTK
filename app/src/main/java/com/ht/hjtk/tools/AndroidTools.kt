@@ -462,7 +462,7 @@ class AndroidTools(
     /** 올릴 파일: path가 있으면 그 폴더·파일, 없으면 이 작업 → 같은 대화의 최근 작업 결과물 */
     private fun pushFiles(path: String): List<com.ht.hjtk.core.GitHubPush.File> {
         fun collect(root: File): List<com.ht.hjtk.core.GitHubPush.File> = if (root.isFile) listOf(com.ht.hjtk.core.GitHubPush.File(root.name, root.readBytes()))
-            else root.walkTopDown().filter { it.isFile && !it.name.startsWith(".") && it.name != "foundry.json" }.take(300).map { com.ht.hjtk.core.GitHubPush.File(it.relativeTo(root).path.replace('\\', '/'), it.readBytes()) }.toList()
+            else root.walkTopDown().filter { it.isFile && !it.name.startsWith(".") && it.name != "foundry.json" && !it.relativeTo(root).path.startsWith("dist") }.take(300).map { com.ht.hjtk.core.GitHubPush.File(it.relativeTo(root).path.replace('\\', '/'), it.readBytes()) }.toList()
         if (path.isNotBlank()) {
             val cands = listOf(File(dir, path), File(store.workspace, path))
             cands.firstOrNull { it.exists() && it.canonicalPath.startsWith(store.workspace.canonicalPath) }?.let { return collect(it) }

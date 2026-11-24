@@ -203,6 +203,25 @@ class ScreensTest {
     @Test fun s41_projectChat() { seedProject("7F3K9Q2M4XZ"); shot("41_project_chat") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
     @Test fun s42_projectJob() { seedProject("7F3K9Q2M4XZ"); vm.go(Route.Job("7F3K9Q2M4XZ")); shot("42_project_job") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
     @Test fun s43_projectPicker() { vm.mode.value = Mode.MISSION; vm.difficulty.value = com.ht.hjtk.core.ai.Difficulty.PROJECT; vm.store.updateSettings { it.copy(projectMinutes = 120) }; shot("43_project_time") { HjtkApp(vm) }; vm.difficulty.value = com.ht.hjtk.core.ai.Difficulty.STANDARD; vm.mode.value = Mode.AUTO }
+    /** 3.6 결과물 카드: 앱 → 설치·미리보기, 완성본, ZIP */
+    @Test fun s44_deliver() {
+        val c = vm.store.newConversation("할 일 정원 앱"); vm.convId.value = c.id
+        vm.store.msg(c.id, Role.USER, "물 주듯 할 일을 키우는 앱 만들어줘")
+        vm.store.msg(c.id, Role.SYSTEM, "프로젝트를 맡았어요 · 60분 · PM이 헌장을 쓰고 스프린트로 진행해요\n팀 Claude · ChatGPT · Gemini · DeepSeek | 빠짐 Grok(로그인 안 됨) → 허브 → AI 상태 점검", "note", mapOf("job" to "DLV1"))
+        val d = vm.store.jobDir("DLV1"); java.io.File(d, "dist").mkdirs(); java.io.File(d, "app").mkdirs()
+        java.io.File(d, "dist/할_일_정원.apk").writeBytes(ByteArray(48_000)); java.io.File(d, "dist/할_일_정원.html").writeText("<h1>x</h1>"); java.io.File(d, "dist/할_일_정원.zip").writeBytes(ByteArray(9_000)); java.io.File(d, "app/index.html").writeText("<p>x</p>")
+        vm.store.msg(c.id, Role.AI, "할 일 정원", "deliver", mapOf("job" to "DLV1", "title" to "할 일 정원", "apk" to "dist/할_일_정원.apk", "apk_label" to "설치 파일 · 46KB", "preview" to "app/index.html",
+            "html" to "dist/할_일_정원.html", "html_label" to "완성본 · 4장", "zip" to "dist/할_일_정원.zip", "zip_label" to "프로젝트 전체 · 8KB", "saved" to "다운로드/HJTK/할_일_정원"))
+        shot("44_deliver") { HjtkApp(vm) }
+    }
+    @Test fun s45_aiHealth() {
+        com.ht.hjtk.engine.AiHealth.results.value = mapOf(
+            com.ht.hjtk.core.ai.Provider.GPT to com.ht.hjtk.engine.AiHealth.Check(com.ht.hjtk.core.ai.Provider.GPT, false, 75_000, "", "보냈지만 답을 읽지 못했어요(답 위치를 못 찾음)",
+                """{"url":"https://chatgpt.com/","input":"#prompt-textarea","inputGeneric":true,"send":"button[data-testid=\"send-button\"]","answersCfg":0,"answersAll":0,"login":false,"challenge":false}"""),
+            com.ht.hjtk.core.ai.Provider.DEEPSEEK to com.ht.hjtk.engine.AiHealth.Check(com.ht.hjtk.core.ai.Provider.DEEPSEEK, true, 6_400, "2", "", null))
+        vm.go(Route.AiHealth); shot("45_ai_health") { HjtkApp(vm) }
+        com.ht.hjtk.engine.AiHealth.results.value = emptyMap()
+    }
     @Test fun s40_github() { vm.go(Route.GitHub); shot("40_github") { HjtkApp(vm) } }
     @Test fun s34_dialer() { shot("34_dialer") { com.ht.hjtk.ui.CallScreen(vm.h, "0262051180", onClose = {}) } }
 }

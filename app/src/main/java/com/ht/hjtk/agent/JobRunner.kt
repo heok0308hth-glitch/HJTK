@@ -216,9 +216,12 @@ class JobRunner(private val h: Hjtk) {
         private fun f(p: String) = java.io.File(root, com.ht.hjtk.core.agent.Company.cleanPath(p))
         override fun write(path: String, text: String) { f(path).also { it.parentFile?.mkdirs() }.writeText(text) }
         override fun read(path: String): String? = f(path).takeIf { it.isFile }?.readText()
-        override fun list(): List<String> = root.walkTopDown().filter { it.isFile && !it.name.startsWith(".") && it.name != "foundry.json" }
+        override fun list(): List<String> = root.walkTopDown().filter { it.isFile && !it.name.startsWith(".") && it.name != "foundry.json" && !it.relativeTo(root).path.startsWith("dist") }
             .map { it.relativeTo(root).path.replace('\\', '/') }.toList()
     }
+
+    private val deliverer by lazy { com.ht.hjtk.engine.Deliverer(h.app, store) }
+    private fun kindLabel(k: String) = when (k) { "apk" -> "설치 파일(APK)"; "preview" -> "미리보기"; "html" -> "완성본(HTML)"; "zip" -> "프로젝트 ZIP"; else -> k }
 
     // 1~3시간 프로젝트: 화면이 꺼져도 CPU가 잠들지 않게(예산 + 30분 뒤 자동 해제)
     private val locks = java.util.concurrent.ConcurrentHashMap<String, android.os.PowerManager.WakeLock>()
@@ -293,23 +296,35 @@ class JobRunner(private val h: Hjtk) {
         val roster = LinkedHashMap<String, String>().apply { team.forEach { (r, a) -> put(r.label, a.name + " · " + a.why) } }
         val ledger = com.ht.hjtk.core.ai.TokenLedger()
         store.updateJob(job.id) { it.copy(team = roster.entries.joinToString("\n") { e -> e.key + "=" + e.value }) }
+        val crewNow = crewFor(job.id, diff)
+        // 누가 일하고 누가 빠졌는지(이유와 함께) 처음부터 보여 준다 — 'GPT가 일을 안 하는 건지 못 하는 건지'
+        val inTeam = crewNow.members().filter { crewNow.available(it) }
+        val missing = com.ht.hjtk.engine.AiHealth.ALL.filter { p -> inTeam.none { it.provider == p } }.map { p ->
+            val m = crewNow.members().firstOrNull { it.provider == p }
+            p.label + "(" + (if (m == null) "로그인 안 됨" else com.ht.hjtk.engine.Scoreboard.snapshot()[m.key]?.lastNote?.ifBlank { null } ?: "쉬는 중") + ")"
+        }
+        val teamLine = "팀 " + inTeam.joinToString(" · ") { it.name } + if (missing.isEmpty()) "" else " | 빠짐 " + missing.joinToString(", ") + " → 허브 → AI 상태 점검"
         val loop: MissionEngine = if (legacy) AgentLoop(ctx, JobLlm(job.id, port()), tools, human, gate, l.control, { e -> onEvent(l, e) },
             config = LoopConfig(autoAllowE2 = s.autoAllowE2), resumeFrom = resumeFrom)
         // 3.3: 지휘자(센터) — 한 AI가 설계·분배·검수까지 책임지고, 팀원은 동시에 일한다
         // 3.5: 프로젝트 = 회사 모드 — PM·스프린트·리뷰 채점·최종 QA, 30분~3시간
-        else if (project) com.ht.hjtk.core.agent.Company(ctx, crewFor(job.id, diff), tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
+        else if (project) com.ht.hjtk.core.agent.Company(ctx, crewNow, tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
             autoAllowE2 = s.autoAllowE2, minutes = job.minutes, ledger = ledger, catalog = com.ht.hjtk.core.agent.FoundryPrompts.catalogFor(job.goal, ctx.disabledCommands),
             files = DirFiles(store.jobDir(job.id)),
             save = { json -> runCatching { java.io.File(store.jobDir(job.id), COMPANY_STATE).writeText(json) } },
             load = { runCatching { java.io.File(store.jobDir(job.id), COMPANY_STATE).takeIf { it.exists() }?.readText() }.getOrNull() },
             // 발열: 뜨거우면 티켓 사이에 쉬고(식히고), 동시에 일하는 AI 수를 줄인다
             pace = { when (com.ht.hjtk.engine.Thermal.level.value) { 3 -> delay(90_000); 2 -> delay(20_000); else -> Unit } },
-            width = { when (com.ht.hjtk.engine.Thermal.level.value) { 0, 1 -> 3; 2 -> 2; else -> 1 } })
-        else com.ht.hjtk.core.agent.Conductor(ctx, crewFor(job.id, diff), tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
-            autoAllowE2 = s.autoAllowE2, difficulty = diff, ledger = ledger, catalog = com.ht.hjtk.core.agent.FoundryPrompts.catalogFor(job.goal, ctx.disabledCommands))
+            width = { when (com.ht.hjtk.engine.Thermal.level.value) { 0, 1 -> 3; 2 -> 2; else -> 1 } },
+            deliver = { d -> deliverer.deliver(job.id, job.convId, d.title, d.order, d.summary, d.credit).map { o -> kindLabel(o.kind) + " — " + o.label } },
+            smoke = { path -> deliverer.smoke(job.id, path) })
+        else com.ht.hjtk.core.agent.Conductor(ctx, crewNow, tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
+            autoAllowE2 = s.autoAllowE2, difficulty = diff, ledger = ledger, catalog = com.ht.hjtk.core.agent.FoundryPrompts.catalogFor(job.goal, ctx.disabledCommands),
+            files = DirFiles(store.jobDir(job.id)),
+            deliver = { d -> deliverer.deliver(job.id, job.convId, d.title, d.order, d.summary, d.credit).map { o -> kindLabel(o.kind) + " — " + o.label } })
         l.loop = loop
         if (project) wake(job.id, job.minutes)
-        store.msg(job.convId, Role.SYSTEM, if (project) "프로젝트를 맡았어요 · ${job.minutes}분 · PM이 헌장을 쓰고 스프린트로 진행해요" else "작업을 맡았어요 · ${diff.label}" + (team[AiRole.WRITE]?.let { " · 작성 ${it.name}" } ?: "") + (team[AiRole.REVIEW]?.takeIf { diff.critic }?.let { " · 검토 ${it.name}" } ?: "") + (active?.let { " · 스킬 '${it.name}'" } ?: ""), "note", mapOf("job" to job.id))
+        store.msg(job.convId, Role.SYSTEM, (if (project) "프로젝트를 맡았어요 · ${job.minutes}분 · PM이 헌장을 쓰고 스프린트로 진행해요" else "작업을 맡았어요 · ${diff.label}") + (active?.let { " · 스킬 '${it.name}'" } ?: "") + "\n" + teamLine, "note", mapOf("job" to job.id))
         l.task = scope.launch {
             val out = try { loop.run() }
                 catch (e: CancellationException) { LoopOutcome(JobState.ABORTED, "중지됨", 0, "중지") }

@@ -60,7 +60,12 @@ class Company(
     private val load: () -> String? = { null },
     private val pace: suspend () -> Unit = {},
     private val width: () -> Int = { 3 },
+    /** 결과물 전달(APK·완성본·ZIP) → 사용자에게 보일 줄들 */
+    private val deliver: suspend (Delivery) -> List<String> = { emptyList() },
+    /** 앱 실행 검사: 오류 요약, 없으면 null */
+    private val smoke: suspend (String) -> String? = { null },
 ) : MissionEngine {
+    data class Delivery(val title: String, val summary: String, val order: List<String>, val credit: String, val app: Boolean)
 
     data class Criterion(val name: String, val desc: String)
     data class FilePlan(val path: String, val purpose: String)
@@ -85,6 +90,8 @@ class Company(
     private var elapsedBefore = 0L
     private var qa: Double = 0.0
     private var qaIssues: List<String> = emptyList()
+    private var smokeNote: String? = null
+    private fun isApp() = charter?.plan?.any { it.path == "app/index.html" } == true || files.read("app/index.html") != null
     private var stagePlan: List<PlanStep> = emptyList()
     private val times = Collections.synchronizedList(ArrayList<Long>())
     private var prog = 0.0
@@ -172,6 +179,7 @@ class Company(
         appendLine("헌장 규칙:")
         appendLine("- files: 실제로 남길 결과물 파일 3~8개. 큰 문서는 장(章)별 파일로 나눠라(예: 01_시장조사.md, 02_전략.md). 코드는 실제 경로(src/…).")
         appendLine("- rubric: 이 프로젝트만의 채점 기준 4~5개(이름과 '10점이면 어떤 상태인지'). 일반론 말고 구체적으로.")
+        appendLine("- 목표가 앱·게임·도구라면: 결과물은 인터넷 없이 도는 웹 앱이다. 진입점은 반드시 app/index.html, 필요하면 app/style.css·app/main.js. 외부 CDN·서버 금지(모든 것을 파일 안에), 모바일 세로 화면, 저장은 localStorage. 완성되면 HJTK가 폰에서 바로 설치할 수 있는 APK로 포장해 의뢰인에게 건넨다. 기획·설계 문서(.md)도 함께.")
         appendLine("- milestones: 3~4개.")
         appendLine("- backlog: 스프린트 1 티켓 ${w()}~${w() * 2}개. 티켓 하나 = 파일 하나. 기초(조사·구조·핵심 설계)부터.")
         appendLine("  inputs에는 참고할 다른 파일 경로, after에는 먼저 끝나야 할 티켓 id. brief는 담당자가 바로 일할 수 있게 분량·관점·형식까지.")
@@ -389,6 +397,25 @@ class Company(
     private suspend fun finish(): LoopOutcome {
         val c = charter ?: return LoopOutcome(JobState.FAILED, "헌장을 만들지 못했어요", 0, "실패")
         if (files.list().isEmpty()) return LoopOutcome(JobState.FAILED, "팀원이 결과물을 만들지 못했어요. AI 연결을 확인하고 '이어서 진행'해 주세요.", tickets.size, "실패")
+        // 앱이면 실제로 돌려 본다: 콘솔 오류가 있으면 고치는 티켓을 바로 만든다(최대 2번)
+        if (isApp()) {
+            for (round in 0 until 2) {
+                phase("실행 검사", "앱을 열어 오류를 찾는 중")
+                val err = smoke("app/index.html")
+                smokeNote = err
+                StageBus.edit(ctx.jobId) { it.copy(cards = it.cards + StageBus.Card("smoke$round", "실행 검사", "HJTK", "", if (err == null) StageBus.S.DONE else StageBus.S.FAIL, err?.lineSequence()?.first()?.take(70) ?: "오류 없음 · 화면 그려짐", clock(), clock())) }
+                emit(AgentEvent.Collab(clock(), "실행 검사", "HJTK", if (err == null) "앱이 오류 없이 열려요" else "오류 ${err.lines().size}개 → 고치는 티켓을 만들어요"))
+                if (err == null || left() < reserve / 3) break
+                val target = Regex("""\(([\w.-]+\.(?:js|html|css)):\d+\)""").find(err)?.groupValues?.get(1)?.let { "app/$it" }?.takeIf { files.read(it) != null } ?: "app/index.html"
+                sprint++
+                val fix = Ticket("FIX${round + 1}", "실행 오류 고치기", target, "앱을 실제로 열었더니 아래 오류가 났다. 원인을 찾아 고친 전체 파일을 써라. 다른 기능은 망가뜨리지 말 것.\n$err",
+                    files.list().filter { it.startsWith("app/") && it != target }, emptyList(), sprint)
+                val assigned = assign(listOf(fix), sprint)
+                assigned.forEach { tickets += it }
+                StageBus.edit(ctx.jobId) { it.copy(cards = it.cards + assigned.map { t -> card(t) }) }
+                runSprint(assigned); retro()
+            }
+        }
         var polished = false
         while (true) {
             phase("최종 QA", "다른 회사 AI 둘이 프로젝트 전체를 채점하는 중")
@@ -409,6 +436,12 @@ class Company(
         val report = (body.ifBlank { "# ${c.title}\n\n${c.summary}" }).trim() + "\n\n" + workLog()
         files.write(REPORT, report)
         StageBus.card(ctx.jobId, "report") { it.copy(status = StageBus.S.DONE, doing = "$REPORT · ${report.length}자", endedAt = clock()) }
+        // 결과물 전달: 앱이면 APK, 문서면 완성본, 언제나 ZIP — 다운로드 폴더와 대화 카드로
+        phase("전달", if (isApp()) "설치 파일(APK)로 포장하는 중" else "완성본을 묶는 중")
+        StageBus.edit(ctx.jobId) { it.copy(cards = it.cards + StageBus.Card("deliver", if (isApp()) "APK 포장·전달" else "완성본·전달", "HJTK", "", StageBus.S.RUN, "결과물을 묶는 중", clock())) }
+        val order = (listOf(REPORT) + c.plan.map { it.path } + files.list().sorted()).distinct().filter { files.read(it) != null }
+        val delivered = runCatching { deliver(Delivery(c.title, c.summary, order, "PM ${desk.center?.name} · 일한 AI ${desk.credits()} · 최종 QA ${fmt(qa)}/10 · HJTK", isApp())) }.getOrElse { emptyList() }
+        StageBus.card(ctx.jobId, "deliver") { it.copy(status = if (delivered.isEmpty()) StageBus.S.FAIL else StageBus.S.DONE, doing = delivered.joinToString(" · ").ifBlank { "묶지 못함 · 파일은 작업 폴더에 있어요" }.take(80), endedAt = clock()) }
         var pushNote = ""
         if (Conductor.GITHUB.containsMatchIn(ctx.goal)) {
             phase("올리기", "GitHub에 올리는 중")
@@ -421,6 +454,7 @@ class Company(
             appendLine(); appendLine(c.summary.ifBlank { ctx.goal })
             appendLine(); appendLine("결과물 (${files.list().size}개 파일)")
             files.list().sorted().forEach { p -> appendLine("- $p · ${files.read(p)?.length ?: 0}자" + (lastScore(p)?.let { " · ${fmt(it)}점" } ?: "")) }
+            if (delivered.isNotEmpty()) { appendLine(); appendLine("받은 결과물"); delivered.forEach { appendLine("- $it") } }
             appendLine(); append("---\nPM ${desk.center?.name} · 스프린트 $sprint · 티켓 ${tickets.count { it.status == "done" }}/${tickets.size} · 최종 QA ${fmt(qa)}/10 · ${mins(elapsed())}분 · 일한 AI ${desk.credits()} · 토큰 약 ${Tokens.fmt(ledger.total())}")
             append(pushNote)
         }
@@ -469,6 +503,7 @@ class Company(
         if (ins.isNotBlank()) { appendLine(); appendLine("참고 파일:"); appendLine(ins) }
         val d = desk.board.digest(1400); if (d.isNotBlank()) { appendLine(); appendLine("[팀 칠판]"); appendLine(d) }
         appendLine()
+        if (t.file.startsWith("app/")) appendLine("이 파일은 APK로 포장될 웹 앱의 일부다: 인터넷 없이 동작(외부 CDN·폰트·이미지 URL 금지, 필요하면 SVG·CSS로 직접), 모바일 세로 화면, 터치 조작, 저장은 localStorage. 다른 app/ 파일과 이름(id·함수)이 맞아야 한다. 콘솔 오류 0개.")
         append(if (isCode(t.file)) "파일 내용 전체만 출력(코드 블록 하나, 생략 없이, 주석은 필요한 곳만)." else "파일에 들어갈 완성된 내용만 출력(마크다운, 제목부터). 인사·설명·되묻기 금지. 일반론 대신 구체적 사실·수치·예시·출처.")
         append("\n\n끝에 팀에 알릴 것이 있으면(없으면 생략):\n[칠판]\n사실: …\n결정: …\n질문: …")
     }
@@ -493,6 +528,7 @@ class Company(
 
     private fun qaPrompt() = buildString {
         appendLine("[최종 QA] 의뢰인에게 넘기기 직전이다. 프로젝트 전체를 채점해라. 파일 사이의 모순·빠진 요구·중복도 본다.")
+        if (isApp()) appendLine("앱 실행 검사: " + (smokeNote?.let { "오류 있음 — $it" } ?: "오류 없이 열림"))
         appendLine("목표: ${ctx.goal}"); appendLine(charterBrief())
         val ps = files.list().sorted()
         val each = (chars + 6000) / ps.size.coerceAtLeast(1)
@@ -535,6 +571,8 @@ class Company(
         appendLine("| 최종 QA | ${fmt(qa)} / 10 |")
         appendLine("| 일한 AI(완료 건수) | ${desk.credits()} |")
         appendLine("| 토큰(추정) | ${Tokens.fmt(ledger.total())} |")
+        appendLine(); appendLine("| AI | 끝낸 일 | 못 한 일(이유) |"); appendLine("|---|---|---|")
+        desk.roll().forEach { (n, done, why) -> appendLine("| $n${if (n == desk.center?.name) " (PM)" else ""} | $done | ${why.ifBlank { "—" }} |") }
         if (history.isNotEmpty()) { appendLine(); appendLine("스프린트별 평균 점수: " + history.joinToString(" → ") { "S${it.first} ${fmt(it.second)}" }) }
         appendLine(); appendLine("| 티켓 | 파일 | 담당 | 리뷰 | 점수 |"); appendLine("|---|---|---|---|---|")
         tickets.filter { it.status == "done" }.forEach { appendLine("| ${it.id} ${it.title.replace("|", "/")} | ${it.file} | ${it.who} | ${it.reviewer} | ${fmt(it.score)} |") }

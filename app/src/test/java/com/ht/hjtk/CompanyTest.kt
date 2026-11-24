@@ -41,7 +41,7 @@ class CompanyTest {
   {"id":"T3","title":"재무 추정","file":"03_재무계획.md","brief":"초기 투자·월 손익","inputs":["01_시장조사.md","02_사업모델.md"],"after":["T1","T2"]},
   {"id":"T4","title":"실행 일정","file":"04_실행계획.md","brief":"12주 일정"}]}"""
 
-    private inner class Firm(val reviewScore: (String) -> Double = { p -> if (p.contains("초안")) 6.5 else 9.0 }, val pmDone: () -> Boolean = { false }, val stepMin: Long = 4) : Crew {
+    private inner class Firm(val reviewScore: (String) -> Double = { p -> if (p.contains("초안")) 6.5 else 9.0 }, val pmDone: () -> Boolean = { false }, val stepMin: Long = 4, val charterJson: String = charter) : Crew {
         val now = AtomicLong(0)
         val sends = AtomicInteger()
         val authored = ConcurrentHashMap<String, MutableList<String>>()   // 누가 어떤 티켓을 썼나
@@ -58,7 +58,7 @@ class CompanyTest {
                 // 동시에 보낸 요청은 시간이 겹친다(실제처럼): 시작 시각 + 4분까지 시계를 민다
                 val start = now.get(); delay(3); now.accumulateAndGet(start + stepMin * 60_000) { a, b -> maxOf(a, b) }
                 val out = when {
-                    text.contains("헌장 규칙") -> charter
+                    text.contains("헌장 규칙") -> charterJson
                     text.contains("[스탠드업]") -> if (pmDone()) """{"summary":"충분함","done":true,"tickets":[]}"""
                         else """{"summary":"재무 근거 보강","done":false,"decisions":["임대료는 성안길 평균 사용"],"tickets":[{"id":"A","title":"재무 보강","file":"03_재무계획.md","brief":"민감도 분석 추가","inputs":["01_시장조사.md"]},{"id":"B","title":"경쟁 사례 추가","file":"01_시장조사.md","brief":"경쟁 카페 5곳"},{"id":"C","title":"리스크","file":"05_리스크.md","brief":"리스크와 대응"}],"files":[{"path":"05_리스크.md","purpose":"리스크"}]}"""
                     text.contains("[코드 리뷰 방식 채점]") -> { val s = reviewScore(text); """{"scores":{"정확성":$s,"실행성":$s,"깊이":$s,"명료성":$s},"must":${if (s < 8) "[\"수치 출처를 붙일 것\"]" else "[]"},"issues":[]}""" }
@@ -77,9 +77,10 @@ class CompanyTest {
     }
 
     private fun company(f: Firm, files: ProjectFiles, minutes: Int = 120, control: JobControl = JobControl(), id: String = "CO1",
-                        saved: StringBuilder = StringBuilder(), load: String? = null, events: MutableList<AgentEvent> = ArrayList()) =
+                        saved: StringBuilder = StringBuilder(), load: String? = null, events: MutableList<AgentEvent> = ArrayList(),
+                        deliver: suspend (Company.Delivery) -> List<String> = { emptyList() }, smoke: suspend (String) -> String? = { null }) =
         Company(ctx.copy(jobId = id), f, tools, human, ApprovalGate(), control, { synchronized(events) { events += it } }, clock = { f.now.get() },
-            minutes = minutes, files = files, save = { saved.setLength(0); saved.append(it) }, load = { load })
+            minutes = minutes, files = files, save = { saved.setLength(0); saved.append(it) }, load = { load }, deliver = deliver, smoke = smoke)
 
     @Test fun twoHourProject_runsSprints_reviewsAndRevises_untilTimeIsSpent() = runBlocking {
         val f = Firm(); val files = MemoryFiles(); val saved = StringBuilder(); val ev = ArrayList<AgentEvent>()
@@ -140,5 +141,37 @@ class CompanyTest {
         assertEquals(6.0, c.parseReview("총점 6/10 입니다")!!.first, 0.01)
         assertEquals("src/app/main.py", Company.cleanPath("/../src/./app/main.py"))
         assertEquals("a_b.md", Company.cleanPath("a:b.md"))
+    }
+
+    @Test fun appProject_runsSmokeTest_fixesErrors_thenDeliversApk() = runBlocking {
+        val appCharter = """{"title":"할 일 정원","summary":"물 주듯 할 일을 키우는 앱","audience":"학생",
+ "rubric":[{"name":"동작","desc":"오류 없이 동작"},{"name":"완성도","desc":"요구 기능 전부"}],
+ "files":[{"path":"01_기획.md","purpose":"기능"},{"path":"app/index.html","purpose":"앱"},{"path":"app/main.js","purpose":"로직"}],
+ "milestones":["기획","구현"],
+ "backlog":[{"id":"T1","title":"기획","file":"01_기획.md","brief":"기능"},{"id":"T2","title":"화면","file":"app/index.html","brief":"화면"},{"id":"T3","title":"로직","file":"app/main.js","brief":"로직","inputs":["app/index.html"],"after":["T2"]}]}"""
+        val f = Firm(reviewScore = { 9.2 }, pmDone = { true }, charterJson = appCharter)
+        val files = MemoryFiles()
+        val smokes = AtomicInteger(); var delivered: Company.Delivery? = null
+        val out = company(f, files, 60, id = "CO4",
+            smoke = { if (smokes.getAndIncrement() == 0) "Uncaught ReferenceError: water is not defined (main.js:12)" else null },
+            deliver = { d -> delivered = d; listOf("설치 파일(APK) — 12KB", "프로젝트 ZIP — 4KB") }).run()
+        assertEquals(JobState.COMPLETED, out.state)
+        assertEquals("실행 검사는 고친 뒤 한 번 더", 2, smokes.get())
+        assertTrue("오류 난 파일(main.js)을 고치는 티켓", f.prompts.any { it.contains("티켓 FIX1]") && it.contains("파일: app/main.js") && it.contains("water is not defined") })
+        assertNotNull(delivered); assertTrue("앱으로 전달", delivered!!.app)
+        assertEquals(Company.REPORT, delivered!!.order.first())
+        assertTrue("결과물이 최종 답에", out.final.contains("받은 결과물") && out.final.contains("APK"))
+        assertTrue("보고서에 AI별 성적", files.read(Company.REPORT)!!.contains("| AI | 끝낸 일 |"))
+        assertTrue("앱 규칙이 작성 지시에", f.prompts.any { it.contains("APK로 포장될 웹 앱") })
+        StageBus.drop("CO4")
+    }
+
+    @Test fun bundle_markdownToHtml() {
+        val h = com.ht.hjtk.core.forge.Bundle.toHtml("# 제목\n\n문단 **굵게** `코드` [링크](https://ex.com)\n\n- 하나\n- 둘\n\n| a | b |\n|---|---|\n| 1 | <2> |\n\n```kotlin\nval x = 1 < 2\n```")
+        assertTrue(h, h.contains("<h2>제목</h2>")); assertTrue(h.contains("<strong>굵게</strong>")); assertTrue(h.contains("<code>코드</code>"))
+        assertTrue(h.contains("<a href=\"https://ex.com\">링크</a>")); assertTrue(h.contains("<ul><li>하나</li><li>둘</li></ul>"))
+        assertTrue(h.contains("<td>&lt;2&gt;</td>")); assertTrue(h.contains("val x = 1 &lt; 2"))
+        val doc = com.ht.hjtk.core.forge.Bundle.html("청주 카페", "요약", listOf(com.ht.hjtk.core.forge.Bundle.Part("01.md", "# 시장\n본문"), com.ht.hjtk.core.forge.Bundle.Part("02.md", "# 재무\n본문")), "HJTK")
+        assertTrue(doc.contains("<nav>")); assertTrue(doc.contains("href=\"#p1\">재무"))
     }
 }

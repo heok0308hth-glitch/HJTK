@@ -64,6 +64,7 @@ fun HjtkApp(vm: MainVm) {
                         Route.Memory -> MemoryScreen(vm)
                         Route.MailAdd -> MailAddScreen(vm)
                         Route.GitHub -> GitHubScreen(vm)
+                        Route.AiHealth -> AiHealthScreen(vm)
                         Route.Ai -> AiSettingsScreen(vm)
                         Route.Accounts -> AccountsScreen(vm)
                         Route.Browser -> BrowserScreen(vm)
@@ -74,6 +75,7 @@ fun HjtkApp(vm: MainVm) {
                         Route.Usage -> UsageScreen(vm)
                         Route.AiLogin -> AiLoginScreen(vm)
                         is Route.Job -> JobScreen(vm, r.id)
+                        is Route.Preview -> PreviewScreen(vm, r.path, r.title)
                         is Route.Command -> CommandScreen(vm, r.id)
                         is Route.PipelineEdit -> PipelineEditScreen(vm, r.id)
                     }

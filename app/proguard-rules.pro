@@ -31,3 +31,7 @@
 -keep class com.google.android.gms.internal.mlkit_vision_common.** { *; }
 -keep class com.google.android.libraries.vision.** { *; }
 -dontwarn com.google.mlkit.**
+
+# 3.6 APK 포장기
+-keep class com.android.apksig.** { *; }
+-dontwarn com.android.apksig.**

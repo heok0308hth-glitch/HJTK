@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 실시간 음성 대화(폰의 음성 인식 서비스) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 화면 공유: 매번 사용자가 허락하는 화면 한 장 찍기(접근성 권한 없음) -->

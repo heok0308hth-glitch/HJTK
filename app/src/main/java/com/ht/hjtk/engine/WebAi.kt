@@ -248,6 +248,13 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
         } finally { LiveBus.clear(jobId.ifBlank { "web" }, name); partial.value = "" }
     }
 
+    /** 진단: 페이지를 열어(필요하면) 화면 구조 요약 JSON을 돌려준다 */
+    suspend fun probe(): String {
+        ui { ensure(); place() }
+        if (web?.url.isNullOrBlank() || web?.url == "about:blank") { ui { web?.loadUrl(site.home) }; delay(4_000) }
+        return eval("window.__hjtkAi ? window.__hjtkAi.probe() : '{\"error\":\"어댑터 없음\"}'", 6_000).ifBlank { "{\"error\":\"응답 없음\"}" }
+    }
+
     /** 밖에서 멈추기(작업 중지 버튼) */
     suspend fun stopNow() { eval("window.__hjtkAi.stop()", 2_000) }
 }

@@ -10,7 +10,8 @@ import org.json.JSONObject
  * 한도 문구(영어·한국어)를 알아채면 그 AI를 정해진 시간 동안 빼고 다음 AI로 넘긴다.
  */
 object Scoreboard {
-    data class Stat(var ok: Int = 0, var fail: Int = 0, var avgMs: Double = 0.0, var restUntil: Long = 0, var lastNote: String = "") {
+    data class Stat(var ok: Int = 0, var fail: Int = 0, var avgMs: Double = 0.0, var restUntil: Long = 0, var lastNote: String = "",
+                    var lastVia: String = "", var lastOkAt: Long = 0, var lastFailAt: Long = 0) {
         val rate get() = if (ok + fail == 0) 0.8 else ok.toDouble() / (ok + fail)
     }
     private val stats = HashMap<String, Stat>()
@@ -19,18 +20,18 @@ object Scoreboard {
     fun install(c: Context) {
         ctx = c
         runCatching { JSONObject(c.getSharedPreferences("score", 0).getString("s", "{}")!!) }.getOrNull()?.let { o ->
-            o.keys().forEach { k -> o.optJSONObject(k)?.let { j -> stats[k] = Stat(j.optInt("ok"), j.optInt("fail"), j.optDouble("ms", 0.0), j.optLong("rest"), j.optString("note")) } }
+            o.keys().forEach { k -> o.optJSONObject(k)?.let { j -> stats[k] = Stat(j.optInt("ok"), j.optInt("fail"), j.optDouble("ms", 0.0), j.optLong("rest"), j.optString("note"), j.optString("via"), j.optLong("okAt"), j.optLong("failAt")) } }
         }
     }
     private fun save() = ctx?.getSharedPreferences("score", 0)?.edit()?.putString("s", JSONObject().apply {
-        stats.forEach { (k, v) -> put(k, JSONObject().put("ok", v.ok).put("fail", v.fail).put("ms", v.avgMs).put("rest", v.restUntil).put("note", v.lastNote)) }
+        stats.forEach { (k, v) -> put(k, JSONObject().put("ok", v.ok).put("fail", v.fail).put("ms", v.avgMs).put("rest", v.restUntil).put("note", v.lastNote).put("via", v.lastVia).put("okAt", v.lastOkAt).put("failAt", v.lastFailAt)) }
     }.toString())?.apply()
 
     fun stat(key: String) = synchronized(stats) { stats.getOrPut(key) { Stat() } }
 
     fun record(key: String, ok: Boolean, ms: Long, text: String, via: String) = synchronized(stats) {
         val s = stats.getOrPut(key) { Stat() }
-        if (ok) s.ok++ else s.fail++
+        if (ok) { s.ok++; s.lastOkAt = System.currentTimeMillis() } else { s.fail++; s.lastFailAt = System.currentTimeMillis(); s.lastVia = if (com.ht.hjtk.core.ai.AiProfiles.limitHit(text, via)) "LIMIT" else if (text.isBlank()) via.ifBlank { "EMPTY" } else "WEAK" }
         if (s.ok + s.fail > 20) { s.ok = (s.ok * 0.8).toInt(); s.fail = (s.fail * 0.8).toInt() }    // 오래된 기록은 옅게
         if (ok) s.avgMs = if (s.avgMs == 0.0) ms.toDouble() else s.avgMs * 0.7 + ms * 0.3
         limitRest(text, via)?.let { rest -> s.restUntil = System.currentTimeMillis() + rest; s.lastNote = "사용량 한도 · ${rest / 60_000}분 쉬는 중" }
@@ -43,6 +44,21 @@ object Scoreboard {
     private val HARD = listOf("NEEDS_LOGIN", "CHALLENGE", "NO_INPUT", "WEB_NOT_READY", "NO_WEB", "NOT_READY")
     fun resting(key: String) = stat(key).restUntil > System.currentTimeMillis()
     fun note(key: String) = stat(key).let { if (resting(key)) it.lastNote else "" }
+    fun snapshot(): Map<String, Stat> = synchronized(stats) { stats.mapValues { it.value.copy() } }
+    /** 실패 코드 → 사람 말 */
+    fun reason(via: String): String = when {
+        via.contains("LOGIN") -> "로그인이 풀렸어요"
+        via.contains("CHALLENGE") -> "보안 확인(로봇 확인)이 떠 있어요"
+        via.contains("NO_INPUT") -> "입력창을 못 찾았어요(사이트 화면이 바뀜)"
+        via.contains("NOT_READY") || via.contains("NO_WEB") -> "화면이 준비되지 않았어요"
+        via.contains("NO_ANSWER") -> "보냈지만 답을 읽지 못했어요(답 위치를 못 찾음)"
+        via == "LIMIT" || via.contains("429") -> "사용량 한도"
+        via == "WEAK" -> "답이 너무 짧거나 거절"
+        via == "EMPTY" -> "빈 답"
+        via.startsWith("ERR") -> "오류: " + via.removePrefix("ERR:").take(60)
+        via.isBlank() -> ""
+        else -> via
+    }
     fun clearSoft(key: String) = synchronized(stats) { stats[key]?.let { if (it.lastNote == "로그인 필요" || it.lastNote == "화면 준비 안 됨") { it.restUntil = 0; it.lastNote = ""; save() } } }
     fun clear(key: String) = synchronized(stats) { stats[key]?.restUntil = 0; save() }
 
