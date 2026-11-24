@@ -56,13 +56,20 @@ fun StageView(jobId: String, dark: Boolean, compact: Boolean = false) {
             Avatar(st.center, st.centerProvider, 34.dp, active = st.phase != "완료", animate = animate, dark = dark)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("센터 · ${st.center}", style = T.head.copy(color = fg, fontSize = 14.5.sp))
+                Text((if (st.budgetMin > 0) "PM · " else "센터 · ") + st.center, style = T.head.copy(color = fg, fontSize = 14.5.sp))
                 Text(phaseLine(st), style = T.small.copy(color = sub, fontSize = 12.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             PhasePill(st.phase, dark)
         }
-        // 팀원
-        val cards = if (compact) st.cards.sortedBy { order(it.status) }.take(4) else st.cards
+        val project = st.budgetMin > 0
+        if (project) ProjectStrip(st, now, dark)
+        // 팀원(프로젝트면 티켓 보드: 진행·리뷰는 모두, 할 일은 앞 3개, 완료는 최근 4개)
+        val cards = when {
+            compact -> st.cards.filter { !project || it.status in setOf(StageBus.S.RUN, StageBus.S.CHECK, StageBus.S.SWAP) }.ifEmpty { st.cards.takeLast(2) }.sortedBy { order(it.status) }.take(4)
+            project -> st.cards.filter { it.status in setOf(StageBus.S.RUN, StageBus.S.CHECK, StageBus.S.SWAP, StageBus.S.FAIL) } +
+                st.cards.filter { it.status == StageBus.S.WAIT }.take(3) + st.cards.filter { it.status == StageBus.S.DONE }.takeLast(4).reversed()
+            else -> st.cards
+        }
         Column(Modifier.padding(start = 16.dp, top = 6.dp)) {
             cards.forEachIndexed { i, c ->
                 key(c.id) {
@@ -76,6 +83,7 @@ fun StageView(jobId: String, dark: Boolean, compact: Boolean = false) {
             }
             if (compact && st.cards.size > cards.size) Text("+${st.cards.size - cards.size}", style = T.small.copy(color = sub, fontSize = 12.sp), modifier = Modifier.padding(start = 26.dp, top = 2.dp))
         }
+        if (project && !compact && st.files.isNotEmpty()) FilesStrip(st.files, dark)
         // 칠판: AI끼리 주고받은 메모(누가 · 무엇을 알렸나)
         if (st.board.isNotEmpty()) BoardStrip(if (compact) st.board.takeLast(1) else st.board.takeLast(3), dark)
         Spacer(Modifier.height(10.dp))
@@ -194,6 +202,51 @@ private fun BoardStrip(lines: List<String>, dark: Boolean) {
                 Text(who, style = T.small.copy(color = fg, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp))
                 Text(" $kind ", style = T.small.copy(color = if (kind == "주의") C.Red else sub, fontSize = 11.5.sp))
                 Text(body, style = T.small.copy(color = fg, fontSize = 11.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** 프로젝트 띠: 스프린트 · 남은 시간(초 단위로 줄어듦) · 품질 · 티켓 보드 칸별 수 */
+@Composable
+private fun ProjectStrip(st: StageBus.Stage, now: Long, dark: Boolean) {
+    val fg = if (dark) C.OnInk else C.Ink
+    val sub = if (dark) C.OnInkMute else C.Graphite
+    val left = ((if (st.deadline > 0) st.deadline else now) - now).coerceAtLeast(0) / 1000
+    val time = if (st.phase == "완료") "완료" else "%d:%02d:%02d".format(left / 3600, (left % 3600) / 60, left % 60)
+    Column(Modifier.padding(top = 10.dp).fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Metric("스프린트", if (st.sprint == 0) "—" else "${st.sprint}", fg, sub, Modifier.weight(1f))
+            Metric("남은 시간", time, fg, sub, Modifier.weight(1.4f))
+            Metric("품질", if (st.quality <= 0) "—" else "%.1f".format(java.util.Locale.US, st.quality), if (st.quality >= 8) fg else if (st.quality > 0) C.Red else fg, sub, Modifier.weight(1f))
+        }
+        val n = { s: StageBus.S -> st.cards.count { it.status == s } }
+        Text("할 일 ${n(StageBus.S.WAIT)} · 진행 ${n(StageBus.S.RUN) + n(StageBus.S.SWAP)} · 리뷰 ${n(StageBus.S.CHECK)} · 완료 ${n(StageBus.S.DONE)}" + (n(StageBus.S.FAIL).takeIf { it > 0 }?.let { " · 실패 $it" } ?: ""),
+            style = T.mono.copy(color = sub, fontSize = 10.5.sp), modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+@Composable
+private fun Metric(label: String, value: String, color: Color, sub: Color, modifier: Modifier) {
+    Column(modifier) {
+        Text(label, style = T.mono.copy(color = sub, fontSize = 10.sp))
+        Text(value, style = T.head.copy(color = color, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp))
+    }
+}
+
+/** 산출물 파일: 경로 · 글자 수 · 최근 리뷰 점수 */
+@Composable
+private fun FilesStrip(files: List<String>, dark: Boolean) {
+    val fg = if (dark) C.OnInk else C.Ink
+    val sub = if (dark) C.OnInkMute else C.Graphite
+    Column(Modifier.padding(start = 16.dp, top = 10.dp).fillMaxWidth()) {
+        Text("산출물 ${files.size}", style = T.mono.copy(color = sub, fontSize = 10.sp))
+        files.take(10).forEach { f ->
+            val (path, len, score) = f.split("|").let { Triple(it.getOrElse(0) { "" }, it.getOrElse(1) { "0" }, it.getOrElse(2) { "" }) }
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(path, style = T.small.copy(color = fg, fontSize = 12.sp, fontWeight = if (path.startsWith("00_")) FontWeight.Bold else FontWeight.Normal), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text("%,d자".format(len.toIntOrNull() ?: 0), style = T.mono.copy(color = sub, fontSize = 10.5.sp))
+                if (score.isNotBlank()) Text("  $score", style = T.mono.copy(color = if ((score.toDoubleOrNull() ?: 0.0) >= 8) fg else C.Red, fontSize = 10.5.sp, fontWeight = FontWeight.Bold))
             }
         }
     }

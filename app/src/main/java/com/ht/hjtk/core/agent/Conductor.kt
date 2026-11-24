@@ -51,24 +51,18 @@ class Conductor(
     data class Task(val id: String, val title: String, val who: String, val tool: String = "", val args: Map<String, String> = emptyMap(), val prompt: String = "", val after: List<String> = emptyList(), val round: Int = 0)
     data class Plan(val deliverable: String, val criteria: List<String>, val tasks: List<Task>, val finalWho: String, val finalHow: String, val push: Map<String, String>? = null)
 
-    // 보통 예외여야 한다: 자식이 던지면 같은 무리(동시 작업)가 모두 취소되고 run()까지 올라온다
-    private class Aborted : Exception("작업 중지")
-
+    private val desk = CrewDesk(ctx.jobId, crew, control, emit, clock, ledger)
     private val exec = CommandExec(ctx.jobId, tools, human, gate, emit, clock, autoAllowE2)
     private val outputs = LinkedHashMap<String, String>()
     private val checks = ConcurrentHashMap<String, String>()
-    val board = Board()
-    private var center: CrewMember? = null
-    private var team: List<CrewMember> = emptyList()
+    val board get() = desk.board
+    private var center: CrewMember? get() = desk.center; set(v) { desk.center = v }
+    private var team: List<CrewMember> get() = desk.team; set(v) { desk.team = v }
     private var stagePlan: List<PlanStep> = emptyList()
     private val times = java.util.Collections.synchronizedList(ArrayList<Long>())
-    private val busy = ConcurrentHashMap<String, AtomicInteger>()        // 지금 일하는 중인 요청 수(교체·교차 확인 고를 때)
-    private val credit = ConcurrentHashMap<String, AtomicInteger>()      // 끝낸 일 수(크레딧)
-    private val rr = ConcurrentHashMap<String, AtomicInteger>()
-    private val lanes = ConcurrentHashMap<String, Semaphore>()
-    private fun laneOf(m: CrewMember) = rr.getOrPut(m.key) { AtomicInteger() }.getAndIncrement() % m.lanes.coerceAtLeast(1)
-    private fun lane(m: CrewMember) = lanes.getOrPut(m.key) { Semaphore(m.lanes.coerceAtLeast(1)) }
-    private fun busyOf(m: CrewMember) = busy[m.key]?.get() ?: 0
+    private fun laneOf(m: CrewMember) = desk.laneOf(m)
+    private fun lane(m: CrewMember) = desk.lane(m)
+    private fun busyOf(m: CrewMember) = desk.busyOf(m)
     private var prog = 0.0
     private var totalTasks = 1
     private val finished = AtomicInteger()
@@ -90,12 +84,8 @@ class Conductor(
         emit(AgentEvent.Started(clock(), ctx.goal, c.name))
         emit(AgentEvent.Collab(clock(), "센터", c.name, "설계·검수를 맡고, 할 일은 팀원 ${team.size - 1}명에게 나눠요"))
         return try {
-            coroutineScope {
-                // 중지 감시: 누르는 순간 진행 중인 모든 요청을 끊는다
-                val watch = launch { control.signal.first { it == JobControl.Signal.ABORT }; throw Aborted() }
-                try { conduct(c) } finally { watch.cancel() }
-            }
-        } catch (e: Aborted) {
+            desk.guarded { conduct(c) }
+        } catch (e: CrewDesk.Aborted) {
             StageBus.edit(ctx.jobId) { st -> st.copy(phase = "중지", cards = st.cards.map { if (it.status == StageBus.S.RUN || it.status == StageBus.S.WAIT || it.status == StageBus.S.SWAP || it.status == StageBus.S.CHECK) it.copy(status = StageBus.S.FAIL, doing = "중지됨") else it }) }
             stop()
         }
@@ -185,7 +175,7 @@ class Conductor(
             val r = exec.run(CommandCall("push", "github.push", args))
             pushNote = "\nGitHub: " + (if (r.ok) r.text.lineSequence().first() else "올리지 못함 — ${r.text.take(120)}")
         }
-        val credits = credit.entries.sortedByDescending { it.value.get() }.joinToString(" · ") { (k, v) -> "${team.firstOrNull { it.key == k }?.name ?: k} ${v.get()}" }
+        val credits = desk.credits()
         val final = draft.trim() + "\n\n---\n센터 ${c.name} · 일한 AI $credits · 칠판 ${board.all().size} · 난이도 ${difficulty.label} · 토큰 약 ${Tokens.fmt(ledger.total())}\n파일: $name$pushNote"
         phase("완료", 1.0, "완료")
         emit(AgentEvent.Done(clock(), final, "완료"))
@@ -274,7 +264,7 @@ class Conductor(
         val jobs = HashMap<String, Deferred<Unit>>()
         val side = java.util.Collections.synchronizedList(ArrayList<Job>())
         for (t in tasks) {
-            jobs[t.id] = async {
+            jobs[t.id] = async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
                 t.after.forEach { jobs[it]?.await() }
                 pauseGate()
                 val m = team.firstOrNull { it.name == t.who } ?: bestFree(AiProfiles.skillFor(t.title + t.prompt), avoidCenter = true)
@@ -289,6 +279,8 @@ class Conductor(
                 if (out.length > 200 && difficulty != Difficulty.QUICK && t.tool.isBlank()) crossCheck(this@coroutineScope, t, out)?.let { side += it }
             }
         }
+        // 지도(jobs)를 다 채운 뒤에 출발 — 채우는 도중 뒤 일이 앞 일을 못 찾고 먼저 달려가던 경쟁 상태 방지
+        jobs.values.forEach { it.start() }
         jobs.values.forEach { it.await() }
         side.toList().forEach { it.join() }
     }
@@ -301,25 +293,14 @@ class Conductor(
         return out
     }
 
-    /** 칠판 메모를 떼어 칠판에 올리고 본문만 돌려준다 */
-    private fun absorb(raw: String, who: String): String {
-        val (body, notes) = Board.split(raw)
-        var added = 0
-        notes.forEach { (k, v) -> if (board.add(who, k, v)) added++ }
-        if (added > 0) {
-            val recent = board.all().takeLast(6).map { "${it.who} · ${it.kind} · ${it.text.take(60)}" }
-            StageBus.edit(ctx.jobId) { it.copy(board = recent) }
-            emit(AgentEvent.Collab(clock(), "칠판", who, notes.joinToString(" / ") { "${it.first}: ${it.second.take(40)}" }))
-        }
-        return body
-    }
+    private fun absorb(raw: String, who: String) = desk.absorb(raw, who)
 
     /** 교차 확인: 놀고 있는 다른 회사 AI가 짧게 본다(본 흐름은 기다리지 않음) */
     private fun crossCheck(scope: CoroutineScope, t: Task, out: String): Job? {
         val author = StageBus.stages.value[ctx.jobId]?.cards?.firstOrNull { it.id == t.id }?.provider
         val pick = team.filter { it.provider.name != author && it.key != center?.key && busyOf(it) == 0 && crew.available(it) }
             .maxByOrNull { crew.rate(it, Skill.REVIEW) } ?: return null
-        busy.getOrPut(pick.key) { AtomicInteger() }.incrementAndGet()     // 바로 잡아 둔다(같은 AI가 동시에 두 번 뽑히지 않게)
+        desk.hold(pick)     // 바로 잡아 둔다(같은 AI가 동시에 두 번 뽑히지 않게)
         return scope.launch {
             try {
                 pauseGate()
@@ -332,11 +313,11 @@ class Conductor(
                 if (!fine && !AiProfiles.limitHit(v, r.via)) {
                     checks[t.id] = "${pick.name}: ${v.take(600)}"
                     board.add(pick.name, "주의", "${t.title} — ${v.lineSequence().first().take(160)}")
-                    StageBus.edit(ctx.jobId) { it.copy(board = board.all().takeLast(6).map { n -> "${n.who} · ${n.kind} · ${n.text.take(60)}" }) }
+                    StageBus.edit(ctx.jobId) { it.copy(board = desk.recentBoard()) }
                 }
                 StageBus.card(ctx.jobId, t.id) { it.copy(peer = if (fine) "${pick.name} 확인 · 이상 없음" else "${pick.name} 확인 · 주의 남김") }
-                credit.getOrPut(pick.key) { AtomicInteger() }.incrementAndGet()
-            } finally { busy[pick.key]?.decrementAndGet() }
+                desk.thank(pick)
+            } finally { desk.release(pick) }
         }
     }
 
@@ -392,75 +373,11 @@ class Conductor(
         if (v.trim() == m.value && urls.isNotEmpty()) urls.joinToString(",") else o.take(300)
     }
 
-    /** 고른 AI가 못 하면(빈 답·한도·오류) → 같은 능력에서 지금 한가한 다음 AI로. 최대 3명. 센터는 마지막 수단 */
-    private suspend fun askWithFailover(first: CrewMember, skill: Skill, cardId: String, prompt: String): String {
-        val tried = HashSet<String>()
-        var m: CrewMember? = first
-        while (tried.size < 3) {
-            val cur = m ?: break
-            pauseGate()
-            tried += cur.key
-            if (!crew.available(cur)) { m = next(skill, tried); continue }
-            val mm = cur
-            val t0 = clock()
-            busy.getOrPut(mm.key) { AtomicInteger() }.incrementAndGet()
-            val r = try { runCatching { crew.port(mm, laneOf(mm)).send(prompt, ctx.jobId, 1, true) }.getOrElse { e -> if (e is CancellationException) throw e; LlmReply("", "ERR:${e.message}", false, 0) } }
-                finally { busy[mm.key]?.decrementAndGet() }
-            val text = r.text.trim()
-            val ok = text.length >= 20 && !refusal(text) && !AiProfiles.limitHit(r.text, r.via)
-            crew.report(mm, ok, clock() - t0, r.text, r.via)
-            if (ok) { ledger.add(mm.name, Tokens.estimate(prompt), Tokens.estimate(text)); credit.getOrPut(mm.key) { AtomicInteger() }.incrementAndGet(); return text }
-            val alt = next(skill, tried) ?: break
-            val why = when { AiProfiles.limitHit(r.text, r.via) || !crew.available(mm) -> "사용량 한도"; r.via.contains("LOGIN") -> "로그인 필요"; text.isBlank() -> "답이 없어서"; else -> "답이 부실해서" }
-            emit(AgentEvent.Collab(clock(), "교체", alt.name, "${mm.name} $why → ${alt.name}가 이어받아요"))
-            StageBus.card(ctx.jobId, cardId) { it.copy(who = alt.name, provider = alt.provider.name, status = StageBus.S.SWAP, doing = "${mm.name} $why → ${alt.name}") }
-            delay(250)
-            StageBus.card(ctx.jobId, cardId) { it.copy(status = StageBus.S.RUN) }
-            m = alt
-        }
-        return ""
-    }
-
-    private suspend fun askRaw(m: CrewMember, prompt: String, cardId: String): String {
-        pauseGate()
-        val t0 = clock()
-        val r = runCatching { crew.port(m, 0).send(prompt, ctx.jobId, 1, true) }.getOrElse { e -> if (e is CancellationException) throw e; LlmReply("", "ERR", false, 0) }
-        val ok = r.text.isNotBlank() && !AiProfiles.limitHit(r.text, r.via)
-        crew.report(m, ok, clock() - t0, r.text, r.via)
-        ledger.add(m.name, Tokens.estimate(prompt), Tokens.estimate(r.text))
-        if (!ok) {
-            val alt = next(Skill.PLAN, setOf(m.key), allowCenter = true) ?: return ""
-            if (cardId == "plan") { center = alt; StageBus.edit(ctx.jobId) { it.copy(center = alt.name, centerProvider = alt.provider.name) }; emit(AgentEvent.Collab(clock(), "센터", alt.name, "${m.name} 대신 센터를 맡아요")) }
-            return askRaw(alt, prompt, cardId)
-        }
-        return r.text
-    }
-
-    /** 다음 사람: 능력(성적) − 지금 하는 일 − 센터 벌점 */
-    private fun next(skill: Skill, tried: Set<String>, allowCenter: Boolean = false): CrewMember? =
-        team.filter { it.key !in tried && crew.available(it) }.maxByOrNull { Dispatch.bid(crew.rate(it, skill), busyOf(it), it.lanes, !allowCenter && it.key == center?.key, team.size, false) }
-
-    private fun bestFree(skill: Skill, avoidCenter: Boolean, hint: String = ""): CrewMember {
-        val pool = team.filter { crew.available(it) }.ifEmpty { team }
-        return pool.maxBy { Dispatch.bid(crew.rate(it, skill), busyOf(it), it.lanes, avoidCenter && it.key == center?.key, pool.size, Dispatch.matches(hint, it)) }
-    }
-
-    /** 일시정지: 새 요청을 보내지 않고 기다린다. 중지: 즉시 끊는다 */
-    private suspend fun pauseGate() {
-        when (control.signal.value) {
-            JobControl.Signal.ABORT -> throw Aborted()
-            JobControl.Signal.PAUSE -> {
-                val was = StageBus.stages.value[ctx.jobId]?.phase ?: ""
-                StageBus.edit(ctx.jobId) { it.copy(phase = "일시정지") }
-                val s = control.signal.first { it != JobControl.Signal.PAUSE }
-                if (s == JobControl.Signal.ABORT) throw Aborted()
-                StageBus.edit(ctx.jobId) { it.copy(phase = was.ifBlank { "실행" }) }
-            }
-            else -> Unit
-        }
-    }
-
-    private fun refusal(s: String) = s.length < 120 && Regex("(죄송하지만|도와드릴 수 없|I can't|I cannot|unable to)", RegexOption.IGNORE_CASE).containsMatchIn(s)
+    private suspend fun askWithFailover(first: CrewMember, skill: Skill, cardId: String, prompt: String) = desk.ask(first, skill, cardId, prompt)
+    private suspend fun askRaw(m: CrewMember, prompt: String, cardId: String) = desk.askCenter(m, prompt, takeOver = cardId == "plan")
+    private fun next(skill: Skill, tried: Set<String>, allowCenter: Boolean = false) = desk.next(skill, tried, allowCenter)
+    private fun bestFree(skill: Skill, avoidCenter: Boolean, hint: String = "") = desk.bestFree(skill, avoidCenter, hint)
+    private suspend fun pauseGate() = desk.pauseGate()
 
     // ───────────── 프롬프트 ─────────────
     private fun materials(ids: List<String>, budget: Int): String {

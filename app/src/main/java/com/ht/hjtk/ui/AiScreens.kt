@@ -147,6 +147,21 @@ fun DifficultyRow(vm: MainVm) {
         Spacer(Modifier.width(4.dp))
         Label(d.desc, modifier = Modifier.weight(1f))
     }
+    // 프로젝트(회사 모드): 얼마 동안 일할지. 시간이 남으면 팀이 품질을 더 끌어올린다
+    if (d == Difficulty.PROJECT) {
+        val st by vm.store.settings.collectAsState()
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Label(I18n.t("시간"))
+            Spacer(Modifier.width(2.dp))
+            listOf(30 to "30분", 60 to "1시간", 120 to "2시간", 180 to "3시간").forEach { (m, label) ->
+                val on = st.projectMinutes == m
+                Text(label, style = T.small.copy(fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) C.Red else C.Ink2),
+                    modifier = Modifier.clip(RoundedCornerShape(5.dp)).border(1.dp, if (on) C.Red else C.Hair, RoundedCornerShape(5.dp)).press({ vm.store.updateSettings { it.copy(projectMinutes = m) } }).padding(horizontal = 9.dp, vertical = 4.dp))
+            }
+            Spacer(Modifier.weight(1f))
+            Label(I18n.t("남으면 더 다듬어요"))
+        }
+    }
 }
 
 /** 작업의 AI 팀(역할 · 누가) — 작업 화면과 신호 패널에서 */

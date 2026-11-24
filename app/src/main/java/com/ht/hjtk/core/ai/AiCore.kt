@@ -65,7 +65,7 @@ enum class Difficulty(val label: String, val en: String, val ideas: Int, val rev
     QUICK("빠르게", "Quick", 1, 0, false, 4_000, 4, "계획 1개 · 검토 없음 · 빠른 모델"),
     STANDARD("보통", "Standard", 2, 1, true, 8_000, 6, "계획 2개 비교 · 검토 1회"),
     DEEP("깊게", "Deep", 3, 2, true, 14_000, 8, "계획 3개 · 강한 모델 · 검토 2회"),
-    PROJECT("프로젝트", "Project", 3, 3, true, 22_000, 10, "AI 팀이 역할을 정하고 나눠서 처리");
+    PROJECT("프로젝트", "Project", 3, 3, true, 22_000, 10, "AI 회사 · PM·스프린트·리뷰 채점 · 30분~3시간");
     fun tierFor(r: Role): Tier = when (this) {
         QUICK -> Tier.FAST
         STANDARD -> if (r == Role.WRITE || r == Role.PLAN || r == Role.REVIEW) Tier.BALANCED else Tier.FAST

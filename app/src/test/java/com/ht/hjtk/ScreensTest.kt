@@ -1,6 +1,8 @@
 package com.ht.hjtk
 
 import com.ht.hjtk.core.agent.StageBus.S as StS
+import com.ht.hjtk.core.agent.StageBus.Card as SCard
+import com.ht.hjtk.core.agent.StageBus.Stage as SStage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -184,6 +186,23 @@ class ScreensTest {
     }
     @Test fun s38_stageChat() { seedStage("7F3K9Q2M4XZ"); shot("38_stage_chat") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
     @Test fun s39_stageJob() { seedStage("7F3K9Q2M4XZ"); vm.go(Route.Job("7F3K9Q2M4XZ")); shot("39_stage_job") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
+    /** 3.5 회사 모드: 스프린트 3 · 남은 시간 · 품질 · 티켓 보드 · 산출물 */
+    private fun seedProject(id: String) {
+        val now = System.currentTimeMillis()
+        com.ht.hjtk.core.agent.StageBus.put(SStage(id, "청주 카페 창업 사업계획서", "Claude", "CLAUDE", "스프린트 3", listOf(
+            SCard("S3-1", "재무 민감도 분석", "ChatGPT", "GPT", StS.RUN, "분석하는 중 · 03_재무계획.md", now - 140_000, round = 3),
+            SCard("S3-2", "경쟁 카페 5곳 사례", "Gemini", "GEMINI", StS.CHECK, "Grok가 채점하는 중", now - 260_000, round = 3, peer = ""),
+            SCard("S3-3", "리스크와 대응", "DeepSeek", "DEEPSEEK", StS.RUN, "리뷰 반영해 다시 쓰는 중 (1)", now - 90_000, round = 3, peer = "ChatGPT 리뷰 7.2 · 수정 2"),
+            SCard("S3-4", "12주 실행 일정 다듬기", "Grok", "GROK", StS.WAIT, "앞 티켓 기다리는 중 · 04_실행계획.md", round = 3),
+            SCard("T2", "메뉴·가격", "DeepSeek", "DEEPSEEK", StS.DONE, "02_사업모델.md · 8.7점", now - 2_400_000, now - 1_900_000, round = 1, peer = "Gemini 리뷰 8.7 · 통과"),
+            SCard("T1", "상권 조사", "Gemini", "GEMINI", StS.DONE, "01_시장조사.md · 8.4점", now - 2_600_000, now - 2_000_000, round = 1, peer = "ChatGPT 리뷰 8.4 · 통과"),
+        ), progress = 0.48, note = "청주 카페 사업계획", board = listOf("Gemini · 사실 · 성안길 평일 유동인구 하루 약 4.2만 명(상권정보)", "ChatGPT · 결정 · 임대료는 성안길 1층 평균으로 가정"),
+            sprint = 3, deadline = now + 58 * 60_000L + 12_000, quality = 8.3, budgetMin = 120,
+            files = listOf("01_시장조사.md|6214|8.4", "02_사업모델.md|4870|8.7", "03_재무계획.md|5102|7.6", "04_실행계획.md|2980|8.1", "05_리스크.md|0|")))
+    }
+    @Test fun s41_projectChat() { seedProject("7F3K9Q2M4XZ"); shot("41_project_chat") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
+    @Test fun s42_projectJob() { seedProject("7F3K9Q2M4XZ"); vm.go(Route.Job("7F3K9Q2M4XZ")); shot("42_project_job") { HjtkApp(vm) }; com.ht.hjtk.core.agent.StageBus.drop("7F3K9Q2M4XZ") }
+    @Test fun s43_projectPicker() { vm.mode.value = Mode.MISSION; vm.difficulty.value = com.ht.hjtk.core.ai.Difficulty.PROJECT; vm.store.updateSettings { it.copy(projectMinutes = 120) }; shot("43_project_time") { HjtkApp(vm) }; vm.difficulty.value = com.ht.hjtk.core.ai.Difficulty.STANDARD; vm.mode.value = Mode.AUTO }
     @Test fun s40_github() { vm.go(Route.GitHub); shot("40_github") { HjtkApp(vm) } }
     @Test fun s34_dialer() { shot("34_dialer") { com.ht.hjtk.ui.CallScreen(vm.h, "0262051180", onClose = {}) } }
 }

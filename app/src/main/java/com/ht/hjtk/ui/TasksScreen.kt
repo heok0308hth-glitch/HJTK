@@ -100,7 +100,8 @@ fun JobScreen(vm: MainVm, id: String) {
     val j = jobs.firstOrNull { it.id == id } ?: run { TopBar("작업", onBack = { vm.back() }); return }
     val ctx = LocalContext.current
     val reports = (all[j.convId] ?: emptyList()).filter { it.meta["job"] == id && it.kind == "report" }
-    val files = vm.store.jobDir(id).listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
+    val root = vm.store.jobDir(id)
+    val files = remember(j.updatedAt) { root.walkTopDown().filter { it.isFile && !it.name.startsWith(".") && it.name != "foundry.json" }.sortedWith(compareBy({ !it.name.startsWith("00_") }, { it.relativeTo(root).path })).toList() }
     val plan = runCatching { JSONArray(j.plan) }.getOrNull()
     val journal = remember(j.updatedAt) { runCatching { vm.store.journalFile(id).readLines().takeLast(40).reversed() }.getOrDefault(emptyList()) }
     Column(Modifier.fillMaxSize()) {
@@ -138,7 +139,7 @@ fun JobScreen(vm: MainVm, id: String) {
             if (j.final.isNotBlank()) { SectionHead("02", I18n.t("결과")); Spacer(Modifier.height(8.dp)); MdText(j.final) }
             SectionHead("03", I18n.t("결과물 · 작업공간"), "저장") { files.firstOrNull()?.let { vm.openFile(ctx, it) } }
             if (files.isEmpty()) Text(I18n.t("파일이 아직 없어요"), style = T.small, modifier = Modifier.padding(vertical = 10.dp))
-            files.forEachIndexed { i, f -> NumRow(i + 1, f.name, "${f.length()}B · ${dt.format(Date(f.lastModified()))}", onClick = { vm.openFile(ctx, f) }); Hairline() }
+            files.forEachIndexed { i, f -> NumRow(i + 1, f.relativeTo(root).path, "${f.length()}B · ${dt.format(Date(f.lastModified()))}", onClick = { vm.openFile(ctx, f) }); Hairline() }
             SectionHead("04", "보고 ${reports.size}회")
             reports.reversed().forEach { r -> Column(Modifier.padding(vertical = 8.dp)) { Label("#${r.meta["n"]} · ${dt.format(Date(r.at))}"); Text(r.text, style = T.small.copy(color = C.Ink2)) }; Hairline() }
             SectionHead("05", I18n.t("저널 (해시 체인)"))

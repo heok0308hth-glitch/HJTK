@@ -52,16 +52,18 @@ data class JobRec(
     val via: String = "", val final: String = "", val label: String = "", val reports: Int = 0, val cmds: Int = 0, val dsSession: String? = null,
     val lastPrompt: String = "",
     /** 2.0: 난이도 · 팀(역할=이름 줄들) · 토큰 추정 */
-    val diff: String = "STANDARD", val team: String = "", val tokens: Int = 0
+    val diff: String = "STANDARD", val team: String = "", val tokens: Int = 0,
+    /** 3.5: 프로젝트(회사 모드) 시간 예산(분) */
+    val minutes: Int = 0
 ) {
     val running get() = state == "RUNNING" || state.startsWith("PAUSED")
     fun toJson(): JSONObject = JSONObject().put("id", id).put("c", convId).put("g", goal).put("s", state).put("ca", createdAt).put("ua", updatedAt)
         .put("p", progress).put("eta", eta).put("n", next).put("now", now).put("plan", plan).put("via", via).put("f", final).put("l", label)
-        .put("rep", reports).put("cmds", cmds).put("ds", dsSession ?: "").put("lp", lastPrompt).put("diff", diff).put("team", team).put("tok", tokens)
+        .put("rep", reports).put("cmds", cmds).put("ds", dsSession ?: "").put("lp", lastPrompt).put("diff", diff).put("team", team).put("tok", tokens).put("min", minutes)
     companion object {
         fun from(o: JSONObject) = JobRec(o.getString("id"), o.optString("c"), o.optString("g"), o.optString("s"), o.optLong("ca"), o.optLong("ua"),
             o.optDouble("p", 0.0), o.optString("eta"), o.optString("n"), o.optString("now"), o.optString("plan", "[]"), o.optString("via"), o.optString("f"), o.optString("l"),
-            o.optInt("rep"), o.optInt("cmds"), o.optString("ds").ifBlank { null }, o.optString("lp"), o.optString("diff", "STANDARD"), o.optString("team"), o.optInt("tok"))
+            o.optInt("rep"), o.optInt("cmds"), o.optString("ds").ifBlank { null }, o.optString("lp"), o.optString("diff", "STANDARD"), o.optString("team"), o.optInt("tok"), o.optInt("min"))
     }
 }
 
@@ -90,13 +92,15 @@ data class Settings(
     /** 작업 공정의 검토 AI: auto(키 있으면 Gemini, 없으면 DeepSeek 두 번째 창) · gemini · gemini_app(1탭) · deepseek2 · off */
     val collab: String = "auto",
     /** 화면·AI 답 언어: "" 아직 안 고름(첫 실행에 묻는다) · ko · en */
-    val lang: String = ""
+    val lang: String = "",
+    /** 3.5: 프로젝트(회사 모드) 기본 시간(분) — 30 · 60 · 120 · 180 */
+    val projectMinutes: Int = 60
 ) {
     fun toJson(): JSONObject = JSONObject().put("dsMode", dsMode).put("gMode", geminiMode).put("dsModel", dsModel).put("gModel", geminiModel).put("pet", petEnabled)
-        .put("rep", reportMinutes).put("autoE2", autoAllowE2).put("name", userName).put("city", homeCity).put("defM", defaultMission).put("onb", onboarded).put("gw", geminiWaitMin).put("collab", collab).put("lang", lang)
+        .put("rep", reportMinutes).put("autoE2", autoAllowE2).put("name", userName).put("city", homeCity).put("defM", defaultMission).put("onb", onboarded).put("gw", geminiWaitMin).put("collab", collab).put("lang", lang).put("projMin", projectMinutes)
     companion object {
         fun from(o: JSONObject) = Settings(o.optString("dsMode", "web"), o.optString("gMode", "app"), o.optString("dsModel", "deepseek-flash"), o.optString("gModel", "gemini-3.8-flash"),
-            o.optBoolean("pet", true), o.optInt("rep", 5), o.optBoolean("autoE2"), o.optString("name"), o.optString("city", "서울"), o.optBoolean("defM"), o.optBoolean("onb"), o.optInt("gw", 10), o.optString("collab", "auto"), o.optString("lang", if (o.optBoolean("onb")) "ko" else ""))
+            o.optBoolean("pet", true), o.optInt("rep", 5), o.optBoolean("autoE2"), o.optString("name"), o.optString("city", "서울"), o.optBoolean("defM"), o.optBoolean("onb"), o.optInt("gw", 10), o.optString("collab", "auto"), o.optString("lang", if (o.optBoolean("onb")) "ko" else ""), o.optInt("projMin", 60))
     }
 }
 

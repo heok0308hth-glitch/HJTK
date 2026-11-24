@@ -32,7 +32,9 @@ object StageBus {
                     val peer: String = "", val round: Int = 0)
     data class Stage(val jobId: String, val goal: String, val center: String, val centerProvider: String, val phase: String, val cards: List<Card>,
                      val progress: Double = 0.0, val note: String = "", val startedAt: Long = System.currentTimeMillis(),
-                     val board: List<String> = emptyList())
+                     val board: List<String> = emptyList(),
+                     /** 3.5 회사 모드: 스프린트 · 마감 시각 · 품질(10점) · 파일("경로|글자수|점수") · 시간 예산(분) */
+                     val sprint: Int = 0, val deadline: Long = 0, val quality: Double = 0.0, val files: List<String> = emptyList(), val budgetMin: Int = 0)
 
     val stages = MutableStateFlow<Map<String, Stage>>(emptyMap())
     fun put(s: Stage) = stages.update { it + (s.jobId to s) }

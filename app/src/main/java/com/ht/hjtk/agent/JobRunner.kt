@@ -53,6 +53,8 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 안드로이드 쪽 오케스트레이터. 작업을 띄우고, 사건을 대화·알림·펫으로 번역하고, 사람의 손을 기다린다.
  */
+private const val COMPANY_STATE = ".company.json"
+
 class JobRunner(private val h: Hjtk) {
     private val store = h.store
     // 어떤 코루틴의 예외도 앱을 죽이지 않는다(기록만 남기고 대화로 알린다)
@@ -159,10 +161,12 @@ class JobRunner(private val h: Hjtk) {
     }
 
     // ── 작업 시작/재개 ──────────────────────────────────────────
-    fun startMission(convId: String, goal: String, skillName: String? = null, difficulty: com.ht.hjtk.core.ai.Difficulty? = null): JobRec {
+    fun startMission(convId: String, goal: String, skillName: String? = null, difficulty: com.ht.hjtk.core.ai.Difficulty? = null, minutes: Int = 0): JobRec {
         val id = JobId.new()
         val now = System.currentTimeMillis()
-        val job = JobRec(id, convId, goal, "RUNNING", now, now, label = "시작", diff = (difficulty ?: h.ai.state.value.difficulty).name)
+        val d = difficulty ?: h.ai.state.value.difficulty
+        val job = JobRec(id, convId, goal, "RUNNING", now, now, label = "시작", diff = d.name,
+            minutes = if (d == com.ht.hjtk.core.ai.Difficulty.PROJECT) (minutes.takeIf { it > 0 } ?: store.settings.value.projectMinutes) else 0)
         store.putJob(job)
         launchLoop(job, resumeFrom = null, skillName = skillName)
         return job
@@ -206,6 +210,23 @@ class JobRunner(private val h: Hjtk) {
         "deepseek2" -> JobLlm(jobId, port(), critic = true)
         else -> if (h.gemini.available()) GeminiApiPort() else JobLlm(jobId, port(), critic = true)
     }
+
+    /** 회사 모드 프로젝트 폴더: 하위 폴더(src/…) 허용, 숨김 파일(체크포인트)은 목록에서 뺀다 */
+    private class DirFiles(private val root: java.io.File) : com.ht.hjtk.core.agent.ProjectFiles {
+        private fun f(p: String) = java.io.File(root, com.ht.hjtk.core.agent.Company.cleanPath(p))
+        override fun write(path: String, text: String) { f(path).also { it.parentFile?.mkdirs() }.writeText(text) }
+        override fun read(path: String): String? = f(path).takeIf { it.isFile }?.readText()
+        override fun list(): List<String> = root.walkTopDown().filter { it.isFile && !it.name.startsWith(".") && it.name != "foundry.json" }
+            .map { it.relativeTo(root).path.replace('\\', '/') }.toList()
+    }
+
+    // 1~3시간 프로젝트: 화면이 꺼져도 CPU가 잠들지 않게(예산 + 30분 뒤 자동 해제)
+    private val locks = java.util.concurrent.ConcurrentHashMap<String, android.os.PowerManager.WakeLock>()
+    private fun wake(jobId: String, minutes: Int) = runCatching {
+        val pm = h.app.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        locks[jobId] = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "hjtk:project").apply { setReferenceCounted(false); acquire((minutes + 30) * 60_000L) }
+    }
+    private fun unwake(jobId: String) { locks.remove(jobId)?.let { runCatching { if (it.isHeld) it.release() } } }
 
     private fun checkpointFile(jobId: String) = java.io.File(store.jobDir(jobId), "foundry.json")
 
@@ -256,8 +277,9 @@ class JobRunner(private val h: Hjtk) {
         val tools = AndroidTools(h, job.id, job.convId, human, l.budget)
         // 새 작업은 '작업 공정'으로. 1.1 이전 형식으로 멈춘 작업만 옛 루프로 이어 간다.
         val cp = checkpointFile(job.id)
-        val legacy = resumeFrom != null && !cp.exists()
         val diff = com.ht.hjtk.core.ai.Difficulty.of(job.diff)
+        val project = diff == com.ht.hjtk.core.ai.Difficulty.PROJECT && job.minutes > 0
+        val legacy = resumeFrom != null && !cp.exists() && !project
         // 팀 구성: 역할마다 가장 알맞은 AI·모델(난이도에 따라 등급), 검토자는 작성자와 다른 회사
         val team = h.ai.team(diff)
         fun portOf(a: com.ht.hjtk.core.ai.Assignment?, role: com.ht.hjtk.core.ai.Role): LlmPort? = when (a?.member?.transport) {
@@ -274,16 +296,27 @@ class JobRunner(private val h: Hjtk) {
         val loop: MissionEngine = if (legacy) AgentLoop(ctx, JobLlm(job.id, port()), tools, human, gate, l.control, { e -> onEvent(l, e) },
             config = LoopConfig(autoAllowE2 = s.autoAllowE2), resumeFrom = resumeFrom)
         // 3.3: 지휘자(센터) — 한 AI가 설계·분배·검수까지 책임지고, 팀원은 동시에 일한다
+        // 3.5: 프로젝트 = 회사 모드 — PM·스프린트·리뷰 채점·최종 QA, 30분~3시간
+        else if (project) com.ht.hjtk.core.agent.Company(ctx, crewFor(job.id, diff), tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
+            autoAllowE2 = s.autoAllowE2, minutes = job.minutes, ledger = ledger, catalog = com.ht.hjtk.core.agent.FoundryPrompts.catalogFor(job.goal, ctx.disabledCommands),
+            files = DirFiles(store.jobDir(job.id)),
+            save = { json -> runCatching { java.io.File(store.jobDir(job.id), COMPANY_STATE).writeText(json) } },
+            load = { runCatching { java.io.File(store.jobDir(job.id), COMPANY_STATE).takeIf { it.exists() }?.readText() }.getOrNull() },
+            // 발열: 뜨거우면 티켓 사이에 쉬고(식히고), 동시에 일하는 AI 수를 줄인다
+            pace = { when (com.ht.hjtk.engine.Thermal.level.value) { 3 -> delay(90_000); 2 -> delay(20_000); else -> Unit } },
+            width = { when (com.ht.hjtk.engine.Thermal.level.value) { 0, 1 -> 3; 2 -> 2; else -> 1 } })
         else com.ht.hjtk.core.agent.Conductor(ctx, crewFor(job.id, diff), tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
             autoAllowE2 = s.autoAllowE2, difficulty = diff, ledger = ledger, catalog = com.ht.hjtk.core.agent.FoundryPrompts.catalogFor(job.goal, ctx.disabledCommands))
         l.loop = loop
-        store.msg(job.convId, Role.SYSTEM, "작업을 맡았어요 · ${diff.label}" + (team[AiRole.WRITE]?.let { " · 작성 ${it.name}" } ?: "") + (team[AiRole.REVIEW]?.takeIf { diff.critic }?.let { " · 검토 ${it.name}" } ?: "") + (active?.let { " · 스킬 '${it.name}'" } ?: ""), "note", mapOf("job" to job.id))
+        if (project) wake(job.id, job.minutes)
+        store.msg(job.convId, Role.SYSTEM, if (project) "프로젝트를 맡았어요 · ${job.minutes}분 · PM이 헌장을 쓰고 스프린트로 진행해요" else "작업을 맡았어요 · ${diff.label}" + (team[AiRole.WRITE]?.let { " · 작성 ${it.name}" } ?: "") + (team[AiRole.REVIEW]?.takeIf { diff.critic }?.let { " · 검토 ${it.name}" } ?: "") + (active?.let { " · 스킬 '${it.name}'" } ?: ""), "note", mapOf("job" to job.id))
         l.task = scope.launch {
             val out = try { loop.run() }
                 catch (e: CancellationException) { LoopOutcome(JobState.ABORTED, "중지됨", 0, "중지") }
                 catch (e: Throwable) { CrashLog.record(e, "job"); LoopOutcome(if (l.control.signal.value == JobControl.Signal.ABORT) JobState.ABORTED else JobState.FAILED, if (l.control.signal.value == JobControl.Signal.ABORT) "중지됨" else "오류: ${e.message}", 0, "오류") }
             store.updateJob(job.id) { it.copy(state = out.state.name, final = out.final, label = out.label, progress = if (out.state == JobState.COMPLETED) 1.0 else it.progress) }
             live.remove(job.id); liveCount.value = live.size
+            unwake(job.id)
             Notifier.report(h.app, job.id, if (out.state == JobState.COMPLETED) "완료 · ${job.goal.take(30)}" else "중단 · ${job.goal.take(30)}", out.final.take(400))
         }
     }
