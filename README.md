@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml"><img src="https://github.com/heok0308hth-glitch/HJTK/actions/workflows/android-ci.yml/badge.svg" alt="Android CI"></a>
-  <img src="https://img.shields.io/badge/version-3.7.0-E44D2E?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-3.7.1-E44D2E?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/Android-9%2B-0E0E0E?style=flat-square&logo=android" alt="android">
   <img src="https://img.shields.io/badge/Kotlin-2.1-0E0E0E?style=flat-square&logo=kotlin" alt="kotlin">
   <img src="https://img.shields.io/badge/Jetpack_Compose-BOM_2025.05-0E0E0E?style=flat-square" alt="compose">
@@ -60,6 +60,12 @@ HJTK는 **생성형 모델을 한 바이트도 넣지 않은** 개인용 AI 비�
   <img src="docs/screens/models.png" width="19%" alt="모델 고르기">
   <img src="docs/screens/ai-call.png" width="19%" alt="AI 전화">
 </p>
+<p align="center">
+  <img src="docs/screens/studio.png" width="24%" alt="3D 스튜디오">
+  <img src="docs/screens/studio-chair.png" width="24%" alt="3D 스튜디오 · 의자">
+  <img src="docs/screens/studio-light.png" width="24%" alt="3D 스튜디오 · 라이트 모드">
+  <img src="docs/screens/deliver-3d.png" width="24%" alt="AI 팀이 만든 3D 모델 받기">
+</p>
 
 ---
 
@@ -113,6 +119,17 @@ flowchart LR
 - **완성본**: 장별 마크다운을 목차가 있는 HTML 한 권으로 묶습니다. 인쇄하면 그대로 PDF가 됩니다.
 - **받는 곳**: 대화의 '결과물 카드'에 설치·바로 실행·열기·공유 버튼이 있고, 같은 파일이 `다운로드/HJTK/프로젝트 이름/`에도 저장됩니다.
 - 검증: JVM 테스트가 실제 셸 APK를 포장·서명한 뒤 `apksig` 검증, `aapt2`로 패키지와 한글 앱 이름 파싱, `zipalign -c 4`까지 통과하는지 확인합니다.
+
+### 2.5 3D 스튜디오 — 폰에서 만지는 작은 블렌더, AI가 모델링
+
+"3D로 만들어줘"라고 하면 AI 팀이 **실제 3D 모델**을 만들고, 사용자는 손가락으로 고친 뒤 블렌더로 넘깁니다.
+
+- **HT-Scene**: 블렌더의 '오브젝트 + 모디파이어' 개념을 JSON 한 장에 담은 장면 형식입니다. 도형 9종(상자·구·원기둥·원뿔·도넛·평면·캡슐·회전체·밀어올리기), 부모 관계, 재질(색·금속성·거칠기), 모디파이어(대칭·일렬/원형/나선 배열·서브디비전·둥근 모서리)를 씁니다. AI는 글로 쓰고, 앱은 같은 데이터를 그리고 고칩니다.
+- **순수 Kotlin 3D 커널(`:mesh`)**: n각형 메시, 캣멀-클라크 서브디비전, 귀 자르기 삼각분할, 이음매 용접, glTF 2.0(.glb)·OBJ/MTL 내보내기, CPU 래스터라이저(블렌더 Workbench 같은 솔리드 셰이딩, 픽셀마다 오브젝트 번호를 기록해 탭으로 고르기와 주황 윤곽선을 만듦).
+- **스튜디오 화면**: 손가락 두 개는 언제나 보기(확대·이동·회전), 한 손가락은 고른 도구(보기·이동·회전·크기). 도형 추가, 치수 슬라이더, 수정자, 재질, 되돌리기 60단계, `.glb`·`.obj`·`.png`를 다운로드/HJTK/3D에 저장.
+- **AI에게 맡기기**: "다리를 더 길게, 상판은 원목으로"처럼 말하면, 코드에 강한 AI부터 차례로 장면을 고칩니다. 열리지 않는 장면이나 지시문을 돌려준 답은 버리고 다음 AI가 이어받습니다.
+- **팀 작업과 연결**: 3D 목표면 회사 모드가 `model/scene.json`을 파일 계획에 넣고, 저장 전에 장면이 실제로 열리는지 검사합니다. 끝나면 결과물 카드에 미리보기 그림, 스튜디오 열기, `.glb`가 붙습니다. AI 도구 `3d.build`로도 바로 굽습니다.
+- **검증**: 내보낸 파일이 Khronos glTF 검사기에서 오류·경고 0개이고, 실제 블렌더 5.3에 `.glb`(노드 계층·사원수)와 `.obj`(월드 좌표)를 각각 불러오면 모든 부품의 위치가 0.00001m 안에서 같습니다(`tools/blender_check.py`).
 
 ### 3. AI 상태 점검 — 일을 안 하는 건지, 못 하는 건지
 
@@ -240,7 +257,9 @@ Kotlin·Java 약 17,000줄 · 모듈 6개 · 명령어 150개 이상.
 | APK 포장기 | 실제 셸 APK로 포장 → 서명 → `apksig` 검증(v2) · `aapt2`로 패키지·한글 앱 이름 확인 · `zipalign -c 4` · 자리표시를 넘는 이름은 거부. |
 | 회사 모드 시뮬레이션 | 가짜 시계로 '2시간 프로젝트'를 몇 초 만에 끝까지 돌림. 스프린트 반복, 반려 → 수정, 예산 대부분 사용 후 마무리, 품질 9점 이상이면 일찍 끝남, 중지 → 앱 재시작 → 끝난 티켓을 다시 하지 않고 이어감. 이 시험이 실제 버그 3개(티켓 중복으로 인한 교착, 스프린트 1 이중 실행, 의존 작업이 앞 작업을 기다리지 않던 경쟁 상태)를 잡아냈습니다. |
 | 단위 테스트 | 지휘자 전체 흐름을 가짜 AI 팀으로 끝까지 돌림(병렬 실행, 한도 감지 → 교체, 막힌 검색 → AI 직접 조사). 일을 한 AI에게 몰아줘도 고르게 나뉘는지, 일시정지 중 새 요청 0건, 중지 시 진행 중 요청 취소, GitHub 단일 커밋·비밀 파일 제외, 칠판 파싱. |
-| 화면 렌더 테스트 | Robolectric + Roborazzi로 44개 화면을 실제 크기(393dp)로 렌더해 눈으로 검수. |
+| 화면 렌더 테스트 | Robolectric + Roborazzi로 48개 화면을 실제 크기(393dp)로 렌더해 눈으로 검수(3D 스튜디오 다크·라이트, 3D 결과물 카드 포함). |
+| 3D 커널 | `:mesh:test` — 도형이 닫혀 있고 바깥을 보는지(모든 모서리를 두 면이 공유), 오목한 면 삼각분할 넓이 보존, 서브디비전, 대칭·배열, 부모 변환, 순환 부모, 관대한 JSON 읽기. 내보낸 `.glb`는 CI에서 Khronos glTF 검사기로 확인합니다. |
+| 저장 검사 회귀 | 2026-11-25 실제 실패(지시문이 결과물로 저장되고 8.0점을 받음)를 그대로 재현하는 시험. 지시문 회신·끊긴 답·빈 채점·못 읽는 스탠드업을 한꺼번에 넣어도 깨끗한 파일만 남고, 가짜 점수가 없고, 예산을 끝까지 씁니다. |
 | 음성 엔진 | 실제 ONNX 모델로 파이썬 기준 구현과 소리 토큰이 정확히 같은지 대조(탐욕 선택). |
 | 회귀 방지 | Android ICU 정규식이 거부하는 패턴을 소스 전체에서 찾아내는 검사. |
 
@@ -261,7 +280,8 @@ GitHub Actions가 푸시마다 같은 테스트를 돌리고 디버그 APK를 �
 
 | 버전 | 핵심 |
 |---|---|
-| **3.7** | **Ensemble SDK 공개** — 오케스트레이션 코어를 순수 Kotlin 라이브러리로 분리(`com.ht.ensemble`), `Ensemble.team { }` 빌더, OpenAI 호환·Anthropic·Gemini·DeepSeek·Grok·Ollama 포트, 터미널 예제, JitPack 배포 · 검수 답이 짧은 JSON일 때 잘못 교체하던 버그와 통합본에 칠판 메모가 섞이던 버그 수정 |
+| **3.7.1** | **3D 스튜디오 · 저장 검사** — 순수 Kotlin 3D 커널과 HT-Scene, 손가락 3D 편집, AI 장면 수정, `.glb`·`.obj` 내보내기(블렌더 검증) · 회사 모드가 지시문을 결과물로 저장하던 실패 수정: 받은 지시문을 돌려준 답·끊긴 답을 저장 전에 걸러 내고(끊긴 답은 이어 쓰기), 못 읽은 채점을 8.0으로 치지 않으며(미채점 표시), PM 답을 못 읽어도 프로젝트가 일찍 끝나지 않음 · 웹 화면에서 내 말풍선을 답으로 읽던 버그 수정 |
+| 3.7 | **Ensemble SDK 공개** — 오케스트레이션 코어를 순수 Kotlin 라이브러리로 분리(`com.ht.ensemble`), `Ensemble.team { }` 빌더, OpenAI 호환·Anthropic·Gemini·DeepSeek·Grok·Ollama 포트, 터미널 예제, JitPack 배포 · 검수 답이 짧은 JSON일 때 잘못 교체하던 버그와 통합본에 칠판 메모가 섞이던 버그 수정 |
 | 3.6 | 결과물 전달 — 만든 웹 앱을 폰에서 서명된 APK로 포장(실행 검사 → 오류 수정 → 설치), 문서는 목차 있는 완성본 HTML, 프로젝트 ZIP, 다운로드 폴더·결과물 카드 · AI 상태 점검(실패 이유·실제 점검·화면 진단) |
 | 3.5 | 회사 모드 — PM·헌장·루브릭, 스프린트·티켓, 다른 회사 AI의 리뷰 채점과 반려·수정, 스탠드업, 최종 QA, 보고서, 30분~3시간, 체크포인트 이어하기 |
 | 3.4 | 합주 — 배정 시장, 칠판, 교차 확인, 자율 보강 · 일시정지·중지 즉시 반영 · 새 대화의 이전 답 버그 수정 · GitHub 업로드 |

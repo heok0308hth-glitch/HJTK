@@ -64,6 +64,10 @@ class Company(
     private val deliver: suspend (Delivery) -> List<String> = { emptyList() },
     /** 앱 실행 검사: 오류 요약, 없으면 null */
     private val smoke: suspend (String) -> String? = { null },
+    /** 3.7.1: 파일 종류별 추가 지침(예: model/scene.json → HT-Scene 형식 설명) */
+    private val fileGuide: (String) -> String? = { null },
+    /** 3.7.1: 파일 종류별 검사(예: 장면 JSON이 열리는지). 문제가 있으면 이유, 없으면 null */
+    private val validate: (String, String) -> String? = { _, _ -> null },
 ) : MissionEngine {
     data class Delivery(val title: String, val summary: String, val order: List<String>, val credit: String, val app: Boolean)
 
@@ -77,6 +81,8 @@ class Company(
         @Volatile var attempts = 0
         @Volatile var issues: List<String> = emptyList()
         @Volatile var reviewer = ""
+        /** 어떤 리뷰어에게서도 읽을 수 있는 채점을 받지 못한 채 저장됨 */
+        @Volatile var ungraded = false
     }
 
     private val desk = CrewDesk(ctx.jobId, crew, control, emit, clock, ledger)
@@ -271,23 +277,45 @@ class Company(
         var author = desk.member(t.who)?.takeIf { desk.crew.available(it) } ?: desk.bestFree(skill, avoidCenter = true)
         t.status = "doing"; t.who = author.name
         StageBus.card(ctx.jobId, t.id) { it.copy(who = author.name, provider = author.provider.name, status = StageBus.S.RUN, doing = "${verb(skill)} · ${t.file}", startedAt = clock()) }
-        var best: String? = null; var bestScore = -1.0; var issues: List<String> = emptyList()
+        var best: String? = null; var bestScore = 0.0; var graded = false; var issues: List<String> = emptyList()
+        val echoed = HashSet<String>()
         val maxTry = if (left() < reserve * 2) 1 else 3
         for (attempt in 0 until maxTry) {
-            val prompt = if (attempt == 0) writePrompt(t) else revisePrompt(t, best.orEmpty(), issues)
+            val prompt = if (best == null) writePrompt(t, issues) else revisePrompt(t, best, issues)
             val raw = desk.lane(author).withPermit { desk.ask(author, skill, t.id, prompt, minLen = 80) }
             if (raw.isBlank()) break
             StageBus.stages.value[ctx.jobId]?.cards?.firstOrNull { it.id == t.id }?.who?.let { n -> desk.member(n)?.let { author = it; t.who = it.name } }
-            val content = shape(desk.absorb(raw, author.name, loud = false), t.file)
-            // 리뷰: 다른 회사 AI가 루브릭으로 채점
+            val content = complete(author, skill, t, shape(desk.absorb(raw, author.name, loud = false), t.file))
+
+            // 3.7.1 저장 검사: 지시문을 돌려준 답·중간에 끊긴 답은 채점도 저장도 하지 않는다
+            val base = Gate.check(content, t.file, prompt)
+            val gate = validate(t.file, content)?.let { why -> base.copy(ok = false, reasons = base.reasons + why) } ?: base
+            if (!gate.ok) {
+                desk.noteFailure(author, if (gate.echo) ECHOED else if (gate.truncated) "답이 끊김" else "저장 검사 탈락")
+                emit(AgentEvent.Collab(clock(), "검사", "HJTK", "${t.file} · ${author.name}: ${gate.reasons.first()}"))
+                StageBus.card(ctx.jobId, t.id) { it.copy(status = StageBus.S.RUN, doing = "저장 검사 탈락 · ${gate.reasons.first().take(30)}") }
+                issues = gate.reasons; t.attempts++
+                if (gate.echo) {
+                    echoed += author.key
+                    author = desk.next(skill, echoed) ?: break
+                    t.who = author.name
+                    StageBus.card(ctx.jobId, t.id) { it.copy(who = author.name, provider = author.provider.name, status = StageBus.S.SWAP) }
+                }
+                continue
+            }
+
             t.status = "review"
-            val rv = reviewerFor(author)
-            StageBus.card(ctx.jobId, t.id) { it.copy(status = StageBus.S.CHECK, doing = "${rv.name}가 채점하는 중", peer = "") }
-            val (score, iss) = review(rv, t, content)
-            t.reviewer = rv.name
-            if (score > bestScore) { best = content; bestScore = score }
+            val (score, iss, reviewer) = grade(author, t, content)
+            if (score == null) {
+                // 아무도 채점하지 못함: 저장 검사는 통과했으니 보관하되 '미채점'으로 표시한다(8점으로 둔갑시키지 않음)
+                if (!graded) best = content
+                StageBus.card(ctx.jobId, t.id) { it.copy(peer = "채점 못 받음 · 미채점으로 보관") }
+                break
+            }
+            t.reviewer = reviewer
+            if (!graded || score > bestScore) { best = content; bestScore = score; graded = true }
             val pass = score >= bar
-            StageBus.card(ctx.jobId, t.id) { it.copy(peer = "${rv.name} 리뷰 ${fmt(score)} · " + if (pass) "통과" else "수정 ${iss.size}") }
+            StageBus.card(ctx.jobId, t.id) { it.copy(peer = "$reviewer 리뷰 ${fmt(score)} · " + if (pass) "통과" else "수정 ${iss.size}") }
             if (pass || attempt == maxTry - 1) break
             issues = iss; t.attempts++
             t.status = "doing"
@@ -297,30 +325,51 @@ class Company(
         times += clock() - t0
         if (out == null) {
             t.status = "failed"
-            StageBus.card(ctx.jobId, t.id) { it.copy(status = StageBus.S.FAIL, doing = "답을 받지 못함 · 스탠드업에서 다시 배정", endedAt = clock()) }
+            StageBus.card(ctx.jobId, t.id) { it.copy(status = StageBus.S.FAIL, doing = "쓸 수 있는 답을 받지 못함 · 스탠드업에서 다시 배정", endedAt = clock()) }
         } else {
             files.write(t.file, out)
-            t.score = bestScore; t.issues = issues; t.status = "done"
-            StageBus.card(ctx.jobId, t.id) { it.copy(status = StageBus.S.DONE, doing = "${t.file} · ${out.length}자 · ${fmt(bestScore)}점", endedAt = clock()) }
-            emit(AgentEvent.Note(clock(), "${t.who} · ${t.title} → ${t.file} (${fmt(bestScore)}점, 리뷰 ${t.reviewer})"))
+            t.score = if (graded) bestScore else 0.0; t.ungraded = !graded; t.issues = issues; t.status = "done"
+            val mark = if (graded) "${fmt(bestScore)}점" else "미채점"
+            StageBus.card(ctx.jobId, t.id) { it.copy(status = StageBus.S.DONE, doing = "${t.file} · ${out.length}자 · $mark", endedAt = clock()) }
+            emit(AgentEvent.Note(clock(), "${t.who} · ${t.title} → ${t.file} ($mark" + (if (graded) ", 리뷰 ${t.reviewer})" else ")")))
         }
         status()
         checkpoint()
     }
 
-    private fun reviewerFor(author: CrewMember): CrewMember {
-        val pool = desk.team.filter { it.provider != author.provider && desk.crew.available(it) }
-        val nonCenter = pool.filter { it.key != desk.center?.key }.ifEmpty { pool }
-        return nonCenter.maxByOrNull { Dispatch.bid(desk.crew.rate(it, Skill.REVIEW), desk.busyOf(it), it.lanes, false, desk.team.size, false) }
-            ?: desk.center ?: author
+    /** 끊긴 답은 끊긴 자리부터 이어 쓰게 한다(최대 두 번) */
+    private suspend fun complete(author: CrewMember, skill: Skill, t: Ticket, start: String): String {
+        var c = start
+        repeat(2) {
+            val why = Gate.truncated(c, t.file) ?: return c
+            StageBus.card(ctx.jobId, t.id) { it.copy(doing = "답이 끊김($why) · 이어서 받는 중") }
+            val more = desk.lane(author).withPermit { desk.ask(author, skill, t.id, continuePrompt(t, c), minLen = 1) }
+            if (more.isBlank()) return c
+            c = shape(Gate.join(c, desk.absorb(more, author.name, loud = false), t.file), t.file)
+        }
+        return c
     }
 
-    /** 채점 → (평균 점수, 고칠 점). 형식을 못 읽으면 통과선으로 본다(흐름은 멈추지 않게) */
-    private suspend fun review(rv: CrewMember, t: Ticket, content: String): Pair<Double, List<String>> {
-        val r = desk.once(rv, reviewPrompt(t, content))
-        if (r.text.isBlank() || AiProfiles.limitHit(r.text, r.via)) return bar to emptyList()
-        desk.thank(rv)
-        return parseReview(r.text) ?: (bar to emptyList())
+    private fun reviewerFor(author: CrewMember, exclude: Set<String> = emptySet()): CrewMember? {
+        val pool = desk.team.filter { it.provider != author.provider && it.key !in exclude && desk.crew.available(it) }
+        val nonCenter = pool.filter { it.key != desk.center?.key }.ifEmpty { pool }
+        return nonCenter.maxByOrNull { Dispatch.bid(desk.crew.rate(it, Skill.REVIEW), desk.busyOf(it), it.lanes, false, desk.team.size, false) }
+            ?: desk.center?.takeIf { it.key !in exclude && it.key != author.key }
+    }
+
+    /** 채점 → (점수, 고칠 점, 리뷰어). 다른 회사 AI 두 명까지 시도하고, 둘 다 못 읽으면 점수 없음(null). 못 읽은 채점은 통과가 아니다 */
+    private suspend fun grade(author: CrewMember, t: Ticket, content: String): Triple<Double?, List<String>, String> {
+        val used = HashSet<String>()
+        repeat(2) {
+            val rv = reviewerFor(author, used) ?: return Triple(null, emptyList(), "")
+            used += rv.key
+            StageBus.card(ctx.jobId, t.id) { it.copy(status = StageBus.S.CHECK, doing = "${rv.name}가 채점하는 중", peer = "") }
+            val r = desk.once(rv, reviewPrompt(t, content))
+            val parsed = if (r.text.isBlank() || AiProfiles.limitHit(r.text, r.via)) null else parseReview(r.text)
+            if (parsed != null) { desk.thank(rv); return Triple(parsed.first, parsed.second, rv.name) }
+            desk.noteFailure(rv, if (r.text.isBlank()) "빈 채점" else "채점을 못 읽음")
+        }
+        return Triple(null, emptyList(), "")
     }
 
     fun parseReview(text: String): Pair<Double, List<String>>? {
@@ -352,17 +401,52 @@ class Company(
         next = next + failed.map { f -> Ticket("${f.id}r", "${f.title} (다시)", f.file, f.brief, f.inputs, emptyList(), sprint + 1).also { it.who = desk.team.filter { m -> m.name != f.who && m.key != pm.key }.maxByOrNull { m -> desk.crew.rate(m, skillOf(f.title, f.file)) }?.name ?: "" } }
         val done = o?.optBoolean("done", false) == true
         val q = quality()
-        val summary = o?.optString("summary").orEmpty().ifBlank { "현황 점검" }
+        var summary = o?.optString("summary").orEmpty().ifBlank { "현황 점검" }
+        // 3.7.1: PM 답을 못 읽었거나 비었다고 프로젝트를 끝내지 않는다 — 남은 일이 분명하면 파일 현황으로 다음 스프린트를 짠다
+        if ((o == null || next.isEmpty()) && needsWork(q)) {
+            val auto = autoplan(sprint + 1)
+            if (auto.isNotEmpty()) {
+                next = next + auto
+                summary = (if (o == null) "PM 답을 읽지 못해" else "PM이 추가한 일이 없어") + " 파일 현황으로 티켓 ${auto.size}개를 짰어요"
+            }
+        }
         StageBus.card(ctx.jobId, id) { it.copy(status = StageBus.S.DONE, doing = if (next.isEmpty()) "추가할 일 없음" else "티켓 ${next.size}개 · " + summary.take(40), endedAt = clock()) }
         emit(AgentEvent.Collab(clock(), "스탠드업", pm.name, "$summary · 남은 시간 ${mins(left())}분 · 품질 ${fmt(q)}"))
         // 일찍 끝내는 조건: 모든 계획 파일 + 품질 9.0 이상 + PM이 끝났다고 판단. 아니면 시간이 있는 한 계속 다듬는다
-        val allFiles = charter!!.plan.all { files.read(it.path) != null }
+        val allFiles = charter!!.plan.all { usable(it.path) != null }
         if (next.isEmpty() || (done && allFiles && q >= excellent)) return null
         // 미리 나눠 둔다: assign()이 담당자를 채우므로 나중에 다시 거르면 같은 티켓이 두 번 들어간다(→ 같은 id 두 개 → 영원히 기다림)
         val (open, preset) = next.partition { it.who.isBlank() }
         val assigned = (assign(open, sprint + 1) + preset).distinctBy { it.id }
         emit(AgentEvent.Collab(clock(), "배정", pm.name, "스프린트 ${sprint + 1}: " + assigned.joinToString(" · ") { "${it.who} → ${it.title}" }))
         return assigned
+    }
+
+    private fun needsWork(q: Double): Boolean {
+        val c = charter ?: return false
+        return c.plan.any { usable(it.path) == null } || c.plan.any { lastDone(it.path)?.ungraded == true } || q < excellent || qaIssues.isNotEmpty()
+    }
+
+    /** 파일이 있고 저장 검사를 통과할 때만 그 내용. 없거나 탈락한 파일은 null */
+    private fun usable(path: String): String? = files.read(path)?.takeIf { Gate.check(it, path).ok }
+    private fun lastDone(path: String) = synchronized(tickets) { tickets.lastOrNull { it.file == path && it.status == "done" } }
+
+    /** PM이 썼을 스탠드업: 없는 파일 → 미채점 파일 → 점수가 낮은 파일 순 */
+    private fun autoplan(sp: Int): List<Ticket> {
+        val c = charter!!
+        val out = ArrayList<Ticket>()
+        fun qa(path: String) = qaIssues.filter { it.contains(path) || it.contains(path.substringAfterLast('/')) }.joinToString(" ").let { if (it.isBlank()) "" else " 최종 QA 지적: $it" }
+        fun refs(path: String) = c.plan.map { it.path }.filter { it != path && usable(it) != null }.take(3)
+        c.plan.filter { usable(it.path) == null }.forEach { f -> out += Ticket("A$sp-${out.size + 1}", "${f.path} 작성", f.path, f.purpose + qa(f.path), refs(f.path), emptyList(), sp) }
+        c.plan.filter { usable(it.path) != null && lastDone(it.path)?.ungraded == true }.forEach { f ->
+            out += Ticket("A$sp-${out.size + 1}", "${f.path} 보강", f.path, "채점 기준으로 평가받을 수 있게 이 파일을 보강: ${f.purpose}." + qa(f.path), refs(f.path), emptyList(), sp)
+        }
+        c.plan.mapNotNull { f -> lastDone(f.path)?.takeIf { !it.ungraded && it.score < excellent && usable(f.path) != null }?.let { f to it } }
+            .sortedBy { it.second.score }.forEach { (f, d) ->
+                val findings = d.issues.joinToString("; ").ifBlank { "구체적 사례·수치·출처로 깊이 보강" }
+                out += Ticket("A$sp-${out.size + 1}", "${f.path} 다듬기", f.path, "지금 ${fmt(d.score)}점 → ${fmt(excellent)}점 이상으로. 지적: $findings." + qa(f.path), refs(f.path), emptyList(), sp)
+            }
+        return out.distinctBy { it.file }.take(w() * 2)
     }
 
     private fun standupPrompt() = buildString {
@@ -494,16 +578,18 @@ class Company(
             "\n파일 계획: " + c.plan.joinToString(", ") { "${it.path}(${it.purpose})" }
     }
 
-    private fun writePrompt(t: Ticket) = buildString {
+    private fun writePrompt(t: Ticket, rejected: List<String> = emptyList()) = buildString {
         appendLine("[회사 프로젝트 · 티켓 ${t.id}] PM ${desk.center?.name}가 너에게 배정했다. 이 결과는 다른 회사 AI가 아래 기준으로 채점한다(8점 미만이면 반려).")
         appendLine(charterBrief())
         appendLine(); appendLine("네 티켓: ${t.title}"); appendLine("파일: ${t.file}"); appendLine(t.brief)
-        val cur = files.read(t.file)
+        val cur = usable(t.file)
+        if (rejected.isNotEmpty()) { appendLine(); appendLine("지난 답은 리뷰 전에 탈락했다:"); rejected.forEach { appendLine("- $it") }; appendLine("이번에는 지시문을 되풀이하지 말고 실제 내용을 끝까지 써라.") }
         if (cur != null) { appendLine(); appendLine("이 파일의 현재 판(이걸 바탕으로 더 나은 전체 판을 써라. 좋은 부분은 살리고, 빈 곳을 채우고, 약한 곳을 고쳐라):"); appendLine(cur.take(chars / 2)) }
         val ins = inputs(t, if (cur != null) chars / 3 else chars * 2 / 3)
         if (ins.isNotBlank()) { appendLine(); appendLine("참고 파일:"); appendLine(ins) }
         val d = desk.board.digest(1400); if (d.isNotBlank()) { appendLine(); appendLine("[팀 칠판]"); appendLine(d) }
         appendLine()
+        fileGuide(t.file)?.let { appendLine(it) }
         if (t.file.startsWith("app/")) appendLine("이 파일은 APK로 포장될 웹 앱의 일부다: 인터넷 없이 동작(외부 CDN·폰트·이미지 URL 금지, 필요하면 SVG·CSS로 직접), 모바일 세로 화면, 터치 조작, 저장은 localStorage. 다른 app/ 파일과 이름(id·함수)이 맞아야 한다. 콘솔 오류 0개.")
         append(if (isCode(t.file)) "파일 내용 전체만 출력(코드 블록 하나, 생략 없이, 주석은 필요한 곳만)." else "파일에 들어갈 완성된 내용만 출력(마크다운, 제목부터). 인사·설명·되묻기 금지. 일반론 대신 구체적 사실·수치·예시·출처.")
         append("\n\n끝에 팀에 알릴 것이 있으면(없으면 생략):\n[칠판]\n사실: …\n결정: …\n질문: …")
@@ -514,8 +600,16 @@ class Company(
         appendLine(charterBrief())
         appendLine("파일: ${t.file} · 티켓: ${t.title}")
         appendLine("리뷰 지적:"); issues.ifEmpty { listOf("기준 대비 깊이·구체성이 부족함") }.forEach { appendLine("- $it") }
+        fileGuide(t.file)?.let { appendLine(it) }
         appendLine("이전 판:"); appendLine(draft.take(chars))
         append(if (isCode(t.file)) "고친 파일 전체만 출력(코드 블록 하나)." else "고친 완성본 전체만 출력.")
+    }
+
+    private fun continuePrompt(t: Ticket, sofar: String) = buildString {
+        appendLine("[이어 쓰기] ${t.file}(티켓 ${t.id})에 대한 네 답이 중간에 끊겼다.")
+        appendLine("끊긴 자리에서 정확히 이어서, 남은 부분만 출력해라. 앞부분을 되풀이하거나 처음부터 다시 쓰지 마라. 인사·설명 없이.")
+        appendLine("끊긴 곳:")
+        append(sofar.takeLast(500))
     }
 
     private fun reviewPrompt(t: Ticket, content: String) = buildString {
@@ -553,13 +647,13 @@ class Company(
         val paths = (t.inputs + tickets.filter { it.id in t.after }.map { it.file }).distinct().filter { it != t.file }
         if (paths.isEmpty()) return ""
         val each = budget / paths.size
-        return paths.mapNotNull { p -> files.read(p)?.let { "=== $p ===\n" + it.take(each) } }.joinToString("\n\n")
+        return paths.mapNotNull { p -> usable(p)?.let { "=== $p ===\n" + it.take(each) } }.joinToString("\n\n")
     }
 
     private fun fileStatus() = charter!!.plan.joinToString("\n") { f ->
-        val txt = files.read(f.path)
-        val last = tickets.lastOrNull { it.file == f.path && it.status == "done" }
-        "- ${f.path} (${f.purpose}): " + if (txt == null) "아직 없음" else "${txt.length}자 · ${last?.let { "${fmt(it.score)}점(${it.who}, 리뷰 ${it.reviewer})" + if (it.issues.isNotEmpty()) " · 지적: " + it.issues.take(2).joinToString(" / ") else "" } ?: "점수 없음"}"
+        val txt = usable(f.path)
+        val last = lastDone(f.path)
+        "- ${f.path} (${f.purpose}): " + if (txt == null) (if (files.read(f.path) != null) "저장 검사 탈락" else "아직 없음") else "${txt.length}자 · ${last?.let { if (it.ungraded) "미채점(리뷰어가 읽을 수 있는 채점을 주지 못함)" else "${fmt(it.score)}점(${it.who}, 리뷰 ${it.reviewer})" + if (it.issues.isNotEmpty()) " · 지적: " + it.issues.take(2).joinToString(" / ") else "" } ?: "점수 없음"}"
     }
 
     private fun workLog() = buildString {
@@ -568,7 +662,7 @@ class Company(
         appendLine("| PM | ${desk.center?.name} |")
         appendLine("| 진행 시간 | ${mins(elapsed())}분 / 예산 ${minutes}분 |")
         appendLine("| 스프린트 | $sprint |")
-        appendLine("| 티켓 | 완료 ${tickets.count { it.status == "done" }} · 반려 후 수정 ${tickets.sumOf { it.attempts }}회 · 실패 ${tickets.count { it.status == "failed" }} |")
+        appendLine("| 티켓 | 완료 ${tickets.count { it.status == "done" }} · 반려 후 수정 ${tickets.sumOf { it.attempts }}회 · 실패 ${tickets.count { it.status == "failed" }} · 미채점 ${tickets.count { it.status == "done" && it.ungraded }} |")
         appendLine("| 최종 QA | ${fmt(qa)} / 10 |")
         appendLine("| 일한 AI(완료 건수) | ${desk.credits()} |")
         appendLine("| 토큰(추정) | ${Tokens.fmt(ledger.total())} |")
@@ -576,7 +670,7 @@ class Company(
         desk.roll().forEach { (n, done, why) -> appendLine("| $n${if (n == desk.center?.name) " (PM)" else ""} | $done | ${why.ifBlank { "—" }} |") }
         if (history.isNotEmpty()) { appendLine(); appendLine("스프린트별 평균 점수: " + history.joinToString(" → ") { "S${it.first} ${fmt(it.second)}" }) }
         appendLine(); appendLine("| 티켓 | 파일 | 담당 | 리뷰 | 점수 |"); appendLine("|---|---|---|---|---|")
-        tickets.filter { it.status == "done" }.forEach { appendLine("| ${it.id} ${it.title.replace("|", "/")} | ${it.file} | ${it.who} | ${it.reviewer} | ${fmt(it.score)} |") }
+        tickets.filter { it.status == "done" }.forEach { appendLine("| ${it.id} ${it.title.replace("|", "/")} | ${it.file} | ${it.who} | ${it.reviewer.ifBlank { "—" }} | ${if (it.ungraded) "미채점" else fmt(it.score)} |") }
     }
 
     // ───────────── 상태·저장 ─────────────
@@ -612,7 +706,7 @@ class Company(
             .put("milestones", JSONArray(c.milestones))) }
         put("tickets", JSONArray(synchronized(tickets) { tickets.map { t -> JSONObject().put("id", t.id).put("title", t.title).put("file", t.file).put("brief", t.brief)
             .put("inputs", JSONArray(t.inputs)).put("after", JSONArray(t.after)).put("sprint", t.sprint).put("status", t.status).put("who", t.who)
-            .put("score", t.score).put("attempts", t.attempts).put("reviewer", t.reviewer).put("issues", JSONArray(t.issues)) } }))
+            .put("score", t.score).put("attempts", t.attempts).put("reviewer", t.reviewer).put("issues", JSONArray(t.issues)).put("ungraded", t.ungraded) } }))
         put("decisions", JSONArray(decisions.toList()))
         put("history", JSONArray(history.map { JSONArray().put(it.first).put(it.second) }))
         put("board", JSONArray(desk.board.all().map { JSONObject().put("who", it.who).put("kind", it.kind).put("text", it.text) }))
@@ -631,7 +725,7 @@ class Company(
         o.optJSONArray("tickets")?.let { a -> for (i in 0 until a.length()) { val t = a.getJSONObject(i)
             tickets += Ticket(t.optString("id"), t.optString("title"), t.optString("file"), t.optString("brief"), JsonPick.strings(t.optJSONArray("inputs")), JsonPick.strings(t.optJSONArray("after")), t.optInt("sprint")).also { k ->
                 k.status = t.optString("status").let { s -> if (s == "doing" || s == "review") "todo" else s }   // 하다 만 티켓은 처음부터
-                k.who = t.optString("who"); k.score = t.optDouble("score", 0.0); k.attempts = t.optInt("attempts"); k.reviewer = t.optString("reviewer"); k.issues = JsonPick.strings(t.optJSONArray("issues"))
+                k.who = t.optString("who"); k.score = t.optDouble("score", 0.0); k.attempts = t.optInt("attempts"); k.reviewer = t.optString("reviewer"); k.issues = JsonPick.strings(t.optJSONArray("issues")); k.ungraded = t.optBoolean("ungraded")
             } } }
         JsonPick.strings(o.optJSONArray("decisions")).forEach { decisions += it }
         o.optJSONArray("history")?.let { a -> for (i in 0 until a.length()) a.optJSONArray(i)?.let { p -> history += p.optInt(0) to p.optDouble(1) } }
@@ -644,7 +738,8 @@ class Company(
     private fun shape(text: String, path: String): String {
         if (!isCode(path)) return text.trim()
         val blocks = Regex("""```[\w+#.-]*[^\n]*\n([\s\S]*?)```""").findAll(text).map { it.groupValues[1] }.toList()
-        return (blocks.maxByOrNull { it.length } ?: text).trimEnd() + "\n"
+        val bare = if (blocks.isEmpty() && text.trimStart().startsWith("```")) text.trimStart().substringAfter('\n') else text
+        return (blocks.maxByOrNull { it.length } ?: bare).trimEnd() + "\n"
     }
     private fun isCode(p: String) = Regex("""\.(kt|java|py|js|ts|tsx|jsx|html|css|swift|dart|go|rs|c|cpp|h|sh|json|yml|yaml|xml|gradle|toml|sql)$""").containsMatchIn(p)
     private fun verb(s: Skill) = when (s) { Skill.RESEARCH -> "조사하는 중"; Skill.CODE -> "코드 쓰는 중"; Skill.REVIEW -> "검토하는 중"; Skill.PLAN -> "설계하는 중"; Skill.CREATIVE -> "발상하는 중"; Skill.REASON -> "분석하는 중"; else -> "쓰는 중" }

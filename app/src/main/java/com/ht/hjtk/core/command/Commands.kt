@@ -63,6 +63,7 @@ object CommandCatalog {
         c("mail.draft", "메일 초안", Category.MAIL, Effect.LOCAL, "to*:받는이|subject*:제목|body*:본문", "초안을 작업공간에 저장(발송 안 함)", "초안"),
         c("github.push", "GitHub에 올리기", Category.FILE, Effect.EXTERNAL, "repo*:저장소 이름(영문, 없으면 새로 만듦)|path:올릴 폴더·파일(비우면 이 작업·대화의 결과물)|message:커밋 메시지|private:비공개 true/false(기본 true)|branch:브랜치", "작업 결과물을 GitHub 저장소에 커밋 한 번으로 올린다(저장소 자동 생성, 비밀 파일 제외)", "깃허브", "깃헙", "github", "푸시"),
         c("github.status", "GitHub 연결 확인", Category.FILE, Effect.READ, "", "연결된 GitHub 계정과 최근 저장소", "깃허브상태"),
+        c("3d.build", "3D 모델 만들기", Category.FILE, Effect.LOCAL, "scene*:HT-Scene JSON(도형·위치·재질·모디파이어)|name:이름", "HT-Scene 글을 실제 3D 모델(.glb·.obj)과 미리보기 그림으로 굽고 다운로드/HJTK/3D에 저장. 블렌더·유니티에서 바로 열림", "3d", "3D", "모델", "블렌더"),
         c("mail.send", "메일 보내기", Category.MAIL, Effect.EXTERNAL, "to*:받는이|subject*:제목|body*:본문|account:계정", "실제 발송 — 로그인한 구글 계정(Gmail)으로, 메일 계정이 연결돼 있으면 SMTP로", "메일보내기", "지메일", "gmail"),
         c("mail.reply", "메일 답장", Category.MAIL, Effect.EXTERNAL, "id*:원본ID|body*:본문|account:계정", "원본에 답장 발송", "답장"),
         c("mail.mark_read", "읽음 표시", Category.MAIL, Effect.LOCAL, "id*:메일ID|account:계정", "읽음으로 표시", "읽음"),

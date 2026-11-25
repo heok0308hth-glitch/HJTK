@@ -518,7 +518,7 @@ private fun DeliverCard(vm: MainVm, m: Msg) {
     val ctx = LocalContext.current
     val root = vm.store.jobDir(m.meta["job"] ?: "manual")
     fun f(k: String) = m.meta[k]?.let { java.io.File(root, it) }?.takeIf { it.exists() }
-    val apk = f("apk"); val preview = f("preview"); val html = f("html"); val zip = f("zip")
+    val apk = f("apk"); val preview = f("preview"); val html = f("html"); val zip = f("zip"); val glb = f("glb"); val scene = f("scene"); val png = f("png")
     FoldCard(Modifier.fillMaxWidth()) {
         Label(I18n.t("결과물 · 받기"), color = C.Red)
         Spacer(Modifier.height(6.dp))
@@ -529,6 +529,19 @@ private fun DeliverCard(vm: MainVm, m: Msg) {
                 InkButton(I18n.t("설치"), accent = true) { vm.installApk(ctx, a) }
             }
             preview?.let { p -> Spacer(Modifier.height(8.dp)); DeliverRow(I.Eye, "바로 실행", "설치하지 않고 앱 안에서 열어 보기") { GhostButton(I18n.t("열기")) { vm.go(Route.Preview(p.absolutePath, m.meta["title"] ?: "미리보기")) } } }
+            Spacer(Modifier.height(8.dp))
+        }
+        glb?.let { g ->
+            png?.let { p -> androidx.compose.runtime.remember(p.path) { android.graphics.BitmapFactory.decodeFile(p.absolutePath) }?.let { bm ->
+                androidx.compose.foundation.Image(bm.asImageBitmap(), null, Modifier.fillMaxWidth().aspectRatio(4f / 3f).clip(RoundedCornerShape(8.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                Spacer(Modifier.height(10.dp))
+            } }
+            DeliverRow(I.Spark, "3D 모델", m.meta["glb_label"] ?: g.name) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    scene?.let { sc -> InkButton(I18n.t("열기"), accent = apk == null) { vm.go(Route.Studio(sc.absolutePath)) } }
+                    GhostButton(I18n.t("공유")) { vm.share(ctx, g, "model/gltf-binary") }
+                }
+            }
             Spacer(Modifier.height(8.dp))
         }
         html?.let { h ->

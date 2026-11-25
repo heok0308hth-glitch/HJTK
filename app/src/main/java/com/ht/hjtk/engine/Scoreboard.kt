@@ -51,6 +51,7 @@ object Scoreboard {
         via.contains("CHALLENGE") -> "보안 확인(로봇 확인)이 떠 있어요"
         via.contains("NO_INPUT") -> "입력창을 못 찾았어요(사이트 화면이 바뀜)"
         via.contains("NOT_READY") || via.contains("NO_WEB") -> "화면이 준비되지 않았어요"
+        via.contains("ECHO") -> "답 대신 보낸 지시문이 읽혔어요(내 말풍선을 답으로 읽음)"
         via.contains("NO_ANSWER") -> "보냈지만 답을 읽지 못했어요(답 위치를 못 찾음)"
         via == "LIMIT" || via.contains("429") -> "사용량 한도"
         via == "WEAK" -> "답이 너무 짧거나 거절"

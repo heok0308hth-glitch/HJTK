@@ -72,6 +72,22 @@ class Deliverer(private val ctx: Context, private val store: Store) {
             File(dist, "$name.md").writeText(Bundle.markdown(title, parts))
             outs += Out("html", html, "완성본 · ${parts.size}장")
         }
+        // 2.5) 3D 장면 → .glb(블렌더·유니티) + .obj + 미리보기 그림
+        root.walkTopDown().filter { it.isFile && !it.relativeTo(root).path.startsWith("dist") && !it.name.startsWith(".") &&
+            (com.ht.hjtk.core.three.Studio3D.isScene(it.name) || (it.extension == "json" && it.length() < 2_000_000 && it.readText().let { t -> t.contains("\"shape\"") && t.contains("\"objects\"") })) }
+            .sortedBy { if (com.ht.hjtk.core.three.Studio3D.isScene(it.name)) 0 else 1 }.take(3).forEachIndexed { i, sf ->
+            runCatching {
+                val scene = com.ht.mesh.Scene.parse(sf.readText())
+                if (scene.nodes.isEmpty()) return@runCatching
+                val b = com.ht.hjtk.core.three.Studio3D.build(scene, dist, if (i == 0) name else name + "_" + (i + 1))
+                if (i == 0) {
+                    outs += Out("glb", b.glb, "${b.stats} · .glb·.obj")
+                    outs += Out("scene", sf, "3D 스튜디오에서 열어 고치기")
+                    outs += Out("png", b.png, "미리보기")
+                    outs += Out("obj", b.obj, "OBJ"); outs += Out("mtl", b.mtl, "MTL")
+                }
+            }.onFailure { CrashLog.record(it, "3d") }
+        }
         // 3) ZIP
         val zip = File(dist, "$name.zip")
         ZipOutputStream(zip.outputStream()).use { z ->
@@ -80,7 +96,7 @@ class Deliverer(private val ctx: Context, private val store: Store) {
         }
         outs += Out("zip", zip, "프로젝트 전체 · ${zip.length() / 1024}KB")
         // 4) 다운로드 폴더에도
-        val saved = outs.filter { it.kind != "preview" }.count { saveToDownloads(it.file, name) }
+        val saved = outs.filter { it.kind != "preview" && it.kind != "scene" }.count { saveToDownloads(it.file, name) }
         // 5) 대화에 결과물 카드
         val meta = HashMap<String, String>()
         meta["job"] = jobId; meta["title"] = title
@@ -155,7 +171,7 @@ class Deliverer(private val ctx: Context, private val store: Store) {
 
     private fun saveToDownloads(f: File, folder: String): Boolean = runCatching {
         if (Build.VERSION.SDK_INT < 29) return false
-        val mime = when (f.extension) { "apk" -> "application/vnd.android.package-archive"; "html" -> "text/html"; "zip" -> "application/zip"; else -> "text/markdown" }
+        val mime = when (f.extension) { "apk" -> "application/vnd.android.package-archive"; "html" -> "text/html"; "zip" -> "application/zip"; "glb" -> "model/gltf-binary"; "obj" -> "model/obj"; "png" -> "image/png"; else -> "text/markdown" }
         val v = ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME, f.name); put(MediaStore.Downloads.MIME_TYPE, mime); put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/HJTK/" + folder) }
         val uri = ctx.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v) ?: return false
         ctx.contentResolver.openOutputStream(uri)?.use { o -> f.inputStream().use { it.copyTo(o) } }

@@ -76,6 +76,7 @@ fun HjtkApp(vm: MainVm) {
                         Route.AiLogin -> AiLoginScreen(vm)
                         is Route.Job -> JobScreen(vm, r.id)
                         is Route.Preview -> PreviewScreen(vm, r.path, r.title)
+                        is Route.Studio -> StudioScreen(vm, r.path)
                         is Route.Command -> CommandScreen(vm, r.id)
                         is Route.PipelineEdit -> PipelineEditScreen(vm, r.id)
                     }

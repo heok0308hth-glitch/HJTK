@@ -44,7 +44,13 @@ jobs:
         run: bash tools/review-gate.sh app/src/main
 
       - name: Unit tests
-        run: ./gradlew :ensemble:test :app:testDebugUnitTest :voicecore:test --no-daemon --stacktrace
+        run: ./gradlew :ensemble:test :mesh:test :app:testDebugUnitTest :voicecore:test --no-daemon --stacktrace
+
+      - name: 3D exports pass the Khronos glTF validator
+        run: |
+          npm i --no-save gltf-validator@2 >/dev/null
+          node tools/gltf_validate.js build/mesh-out/*.glb | tee /tmp/gltf.txt
+          ! grep -E "errors [1-9]" /tmp/gltf.txt
 
       - name: SDK — build, sample, local publish
         run: ./gradlew :samples:cli:run --args="--demo" :ensemble:publishToMavenLocal --no-daemon

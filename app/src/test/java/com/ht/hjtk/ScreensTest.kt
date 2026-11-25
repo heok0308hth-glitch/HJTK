@@ -214,6 +214,24 @@ class ScreensTest {
             "html" to "dist/할_일_정원.html", "html_label" to "완성본 · 4장", "zip" to "dist/할_일_정원.zip", "zip_label" to "프로젝트 전체 · 8KB", "saved" to "다운로드/HJTK/할_일_정원"))
         shot("44_deliver") { HjtkApp(vm) }
     }
+    /** 3.7.1 3D 스튜디오: 예시 장면(배달 로봇)이 실제로 그려진 뷰포트 · 도구 · 덱 */
+    @Test fun s47_studio() { vm.go(Route.Studio()); shot("47_studio") { HjtkApp(vm) } }
+    @Test fun s48_studioChair() {
+        val f = com.ht.hjtk.core.three.Studio3D.save(vm.store.workspace, com.ht.mesh.Scene.parse(com.ht.mesh.Samples.CHAIR))
+        vm.go(Route.Studio(f.absolutePath)); shot("48_studio_chair") { HjtkApp(vm) }
+    }
+    @Test fun s49_studioLight() { com.ht.hjtk.ui.C.dark = false; vm.go(Route.Studio()); shot("49_studio_light") { HjtkApp(vm) }; com.ht.hjtk.ui.C.dark = true }
+    /** AI 팀이 만든 3D 결과물 카드: 미리보기 그림 · 3D 스튜디오에서 열기 · .glb */
+    @Test fun s50_deliver3d() {
+        val c = vm.store.newConversation("탁상 램프 3D"); vm.convId.value = c.id
+        vm.store.msg(c.id, Role.USER, "황동 탁상 램프를 3D로 모델링해줘. 블렌더에서 열 수 있게")
+        val d = vm.store.jobDir("D3D1")
+        val sf = java.io.File(d, "model/scene.json").apply { parentFile.mkdirs(); writeText(com.ht.mesh.Samples.LAMP) }
+        val b = com.ht.hjtk.core.three.Studio3D.build(com.ht.mesh.Scene.parse(sf.readText()), java.io.File(d, "dist"), "Desk_lamp")
+        vm.store.msg(c.id, Role.AI, "Desk lamp", "deliver", mapOf("job" to "D3D1", "title" to "탁상 램프", "glb" to "dist/Desk_lamp.glb", "glb_label" to "${b.stats} · .glb·.obj",
+            "scene" to "model/scene.json", "png" to "dist/Desk_lamp.png", "saved" to "다운로드/HJTK/탁상_램프"))
+        shot("50_deliver_3d") { HjtkApp(vm) }
+    }
     @Test fun s45_aiHealth() {
         com.ht.hjtk.engine.AiHealth.results.value = mapOf(
             com.ht.ensemble.ai.Provider.GPT to com.ht.hjtk.engine.AiHealth.Check(com.ht.ensemble.ai.Provider.GPT, false, 75_000, "", "보냈지만 답을 읽지 못했어요(답 위치를 못 찾음)",

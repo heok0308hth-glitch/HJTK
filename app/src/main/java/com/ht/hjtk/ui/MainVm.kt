@@ -35,6 +35,8 @@ sealed interface Route {
     data class Job(val id: String) : Route
     /** 3.6: 만든 웹 앱·완성본을 앱 안에서 바로 보기 */
     data class Preview(val path: String, val title: String) : Route
+    /** 3.7.1: 3D 스튜디오(장면 파일, 없으면 최근 장면) */
+    data class Studio(val path: String? = null) : Route
     data class Command(val id: String) : Route
     data class PipelineEdit(val id: String?) : Route
     data object MailAdd : Route

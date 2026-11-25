@@ -82,6 +82,8 @@ fun HubScreen(vm: MainVm) {
             Connector(I18n.t("계정 하나로"), com.ht.hjtk.engine.WebAiHub.loggedIn.value.let { s -> if (s.isEmpty()) "구글 하나면 AI·메일·메모·드라이브 전부" else "AI " + s.size + "개 연결 · " + s.joinToString(" · ") { it.label } }, if (com.ht.hjtk.engine.WebAiHub.loggedIn.value.isNotEmpty()) 2 else 1, I.Key) { vm.go(Route.AiLogin) },
             Connector(I18n.t("AI 모델 · 5개 회사"), vm.h.ai.members().joinToString(" · ") { it.provider.label }.ifBlank { "Claude · ChatGPT · Gemini · Grok · DeepSeek" }, if (vm.h.ai.members().size > 1) 2 else 1, I.Spark) { vm.go(Route.Ai) },
             Connector(I18n.t("계정 연결"), "GitHub · Notion · 네이버 API · AI 전화 · 로그인 사이트", if (vm.h.connectors.accounts.value.isNotEmpty()) 2 else 0, I.Key) { vm.go(Route.Accounts) },
+            com.ht.hjtk.core.three.Studio3D.library(st.workspace).size.let { n ->
+                Connector(I18n.t("3D 스튜디오"), if (n == 0) "손가락으로 만지는 작은 블렌더 · AI가 모델링" else "장면 ${n}개 · .glb로 블렌더에", 2, I.Spark) { vm.go(Route.Studio()) } },
             Connector(I18n.t("AI 전화"), vm.h.voice.summary() + " · 무료", if (vm.h.voice.packReady()) 2 else 0, I.Phone) { vm.go(Route.Phone) },
             Connector(I18n.t("실시간 음성 대화"), "말로 묻고 듣기 · 손을 떼도 이어서", 2, I.Chat) { vm.go(Route.Live) },
             Connector(I18n.t("PC에서 쓰기"), "같은 와이파이의 PC 브라우저로 HJTK 열기", 0, I.Globe) { vm.go(Route.Pc) },
@@ -105,7 +107,7 @@ fun HubScreen(vm: MainVm) {
             TopBar("허브", "연동 ${connectors.count { it.state == 2 }}/${connectors.size} · 나만의 작업 공간")
             Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
                 // 자주 쓰는 넷은 크게, 나머지는 한 줄씩(찾기 쉽게)
-                val main = listOf("계정 하나로", "AI 전화", "실시간 음성 대화", "루틴").map { I18n.t(it) }
+                val main = listOf("계정 하나로", "3D 스튜디오", "AI 전화", "실시간 음성 대화").map { I18n.t(it) }
                 val (top, rest) = connectors.partition { it.name in main }
                 Spacer(Modifier.height(14.dp))
                 top.sortedBy { main.indexOf(it.name) }.chunked(2).forEach { row ->

@@ -1,5 +1,7 @@
 package com.ht.hjtk.engine
 
+import com.ht.ensemble.agent.Gate
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
@@ -229,16 +231,20 @@ class WebAi(private val app: Context, val site: Site) : LlmPort {
             var last = ""; var stableSince = 0L; var appeared = false
             while (System.currentTimeMillis() < end) {
                 delay(Thermal.poll(700))
-                val cur = eval("window.__hjtkAi.lastFresh()")
+                // 3.7.1: 내 말풍선(보낸 지시문)이 읽히면 아직 답이 아니다
+                val cur = eval("window.__hjtkAi.lastFresh()").takeUnless { Gate.echo(it, text) }.orEmpty()
                 if (cur.isNotBlank()) appeared = true
                 if (!appeared) { if (System.currentTimeMillis() - t0 > 75_000) return fail("NO_ANSWER"); continue }
-                if (cur != last) { last = cur; stableSince = System.currentTimeMillis(); partial.value = cur; LiveBus.put(jobId.ifBlank { "web" }, name, cur) }
+                if (cur.isNotBlank() && cur != last) { last = cur; stableSince = System.currentTimeMillis(); partial.value = cur; LiveBus.put(jobId.ifBlank { "web" }, name, cur) }
                 val busy = eval("window.__hjtkAi.busy()") == "true"
-                if (!busy && last.isNotBlank() && System.currentTimeMillis() - stableSince > 2_500) break
+                // 끝이 끊긴 모양(열린 따옴표·쓰다 만 표·닫히지 않은 코드)이면 '멈춤' 버튼이 없어도 더 오래 기다린다
+                val settle = if (Gate.truncated(last) != null) 9_000 else 2_500
+                if (!busy && last.isNotBlank() && System.currentTimeMillis() - stableSince > settle) break
             }
             main.postDelayed(nap, if (Thermal.level.value >= 2) 3_000 else 8_000)
             lastUse = System.currentTimeMillis()
             if (last.isBlank()) return fail("NO_ANSWER")
+            if (Gate.echo(last, text)) return fail("ECHO")
             UsageLog.add(name, Tokens.estimate(text), Tokens.estimate(last))
             LlmReply(last, "WEB_${site.provider.name}", true, System.currentTimeMillis() - t0)
         } catch (e: kotlinx.coroutines.CancellationException) {

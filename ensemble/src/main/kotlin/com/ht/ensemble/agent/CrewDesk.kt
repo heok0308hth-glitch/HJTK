@@ -39,9 +39,11 @@ class CrewDesk(
     val fails = ConcurrentHashMap<String, java.util.concurrent.ConcurrentLinkedQueue<String>>()
     private fun failed(m: CrewMember, text: String, via: String) {
         val why = when { AiProfiles.limitHit(text, via) -> "사용량 한도"; via.contains("LOGIN") -> "로그인 풀림"; via.contains("CHALLENGE") -> "보안 확인"; via.contains("NO_INPUT") -> "입력창 못 찾음"
-            via.contains("NOT_READY") || via.contains("NO_WEB") -> "화면 준비 안 됨"; via.contains("NO_ANSWER") -> "답을 못 읽음"; text.isBlank() -> "빈 답"; else -> "답 부실" }
+            via.contains("NOT_READY") || via.contains("NO_WEB") -> "화면 준비 안 됨"; via.contains("ECHO") -> ECHOED; via.contains("NO_ANSWER") -> "답을 못 읽음"; text.isBlank() -> "빈 답"; else -> "답 부실" }
         fails.getOrPut(m.key) { java.util.concurrent.ConcurrentLinkedQueue() }.add(why)
     }
+    /** 호출한 쪽이 직접 알아낸 실패(저장 검사 탈락, 채점 못 읽음)도 기록 */
+    fun noteFailure(m: CrewMember, why: String) { fails.getOrPut(m.key) { java.util.concurrent.ConcurrentLinkedQueue() }.add(why) }
     /** AI별 성적: 끝낸 일 · 실패와 이유 */
     fun roll(): List<Triple<String, Int, String>> = team.map { m ->
         val f = fails[m.key]?.toList().orEmpty()
@@ -94,12 +96,14 @@ class CrewDesk(
             hold(cur)
             val r = try { send(cur, prompt) } finally { release(cur) }
             val text = r.text.trim()
-            val ok = text.length >= minLen && !refusal(text) && !AiProfiles.limitHit(r.text, r.via)
+            // 3.7.1: 받은 지시문을 그대로 돌려준 답(웹 화면에서 내 말풍선을 읽은 경우 등)은 답이 아니다
+            val echoed = Gate.echo(text, prompt)
+            val ok = text.length >= minLen && !refusal(text) && !AiProfiles.limitHit(r.text, r.via) && !echoed
             crew.report(cur, ok, clock() - t0, r.text, r.via)
-            if (!ok) failed(cur, text, r.via)
+            if (!ok) { if (echoed) noteFailure(cur, ECHOED) else failed(cur, text, r.via) }
             if (ok) { ledger.add(cur.name, Tokens.estimate(prompt), Tokens.estimate(text)); thank(cur); return text }
             val alt = next(skill, tried) ?: break
-            val why = when { AiProfiles.limitHit(r.text, r.via) || !crew.available(cur) -> "사용량 한도"; r.via.contains("LOGIN") -> "로그인 필요"; text.isBlank() -> "답이 없어서"; else -> "답이 부실해서" }
+            val why = when { echoed -> "지시문을 그대로 돌려줘서"; AiProfiles.limitHit(r.text, r.via) || !crew.available(cur) -> "사용량 한도"; r.via.contains("LOGIN") -> "로그인 필요"; text.isBlank() -> "답이 없어서"; else -> "답이 부실해서" }
             emit(AgentEvent.Collab(clock(), "교체", alt.name, "${cur.name} $why → ${alt.name}가 이어받아요"))
             StageBus.card(jobId, cardId) { it.copy(who = alt.name, provider = alt.provider.name, status = StageBus.S.SWAP, doing = "${cur.name} $why → ${alt.name}") }
             delay(250)
@@ -165,3 +169,6 @@ class CrewDesk(
 
     fun refusal(s: String) = s.length < 120 && Regex("(죄송하지만|도와드릴 수 없|I can't|I cannot|unable to)", RegexOption.IGNORE_CASE).containsMatchIn(s)
 }
+
+/** 실패 이유: 결과 대신 지시문을 돌려줌 */
+const val ECHOED = "지시문을 그대로 돌려줌"

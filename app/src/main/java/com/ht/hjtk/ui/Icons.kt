@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** 자체 라인 아이콘(24 그리드, 1.6 스트로크). 머티리얼 기본 아이콘을 쓰지 않는다. */
-enum class I { Chat, Tasks, Hub, Tools, Send, Plus, Slash, Pause, Play, Stop, Check, Close, Gear, Mail, Globe, Cal, File, Spark, Paw, Chevron, Back, Search, Pin, Export, Trash, Eye, Bell, Menu, Key, Link, Flow, Up, Down, Image, Phone, Mic, Speaker, Keypad, Wave, Download }
+enum class I { Chat, Tasks, Hub, Tools, Send, Plus, Slash, Pause, Play, Stop, Check, Close, Gear, Mail, Globe, Cal, File, Spark, Paw, Chevron, Back, Search, Pin, Export, Trash, Eye, Bell, Menu, Key, Link, Flow, Up, Down, Image, Phone, Mic, Speaker, Keypad, Wave, Download, Undo }
 
 @Composable
 fun Ico(i: I, size: Dp = 22.dp, color: Color = C.Ink, modifier: Modifier = Modifier) {
@@ -63,6 +63,7 @@ fun Ico(i: I, size: Dp = 22.dp, color: Color = C.Ink, modifier: Modifier = Modif
             I.Export -> { line(12f, 4f, 12f, 15f); drawPath(p(7.5f, 8.5f, 12f, 4f, 16.5f, 8.5f), color, style = st); drawPath(p(5f, 13f, 5f, 20f, 19f, 20f, 19f, 13f), color, style = st) }
             I.Trash -> { line(4.5f, 7f, 19.5f, 7f); drawPath(p(6.5f, 7f, 7.5f, 20f, 16.5f, 20f, 17.5f, 7f), color, style = st); line(9.5f, 7f, 10f, 4f); line(14.5f, 7f, 14f, 4f); line(10f, 4f, 14f, 4f) }
             I.Download -> { line(12f, 4f, 12f, 15f); drawPath(p(7.5f, 10.5f, 12f, 15f, 16.5f, 10.5f), color, style = st); drawPath(p(5f, 15f, 5f, 20f, 19f, 20f, 19f, 15f), color, style = st) }
+            I.Undo -> { drawPath(p(8.5f, 5.5f, 4.5f, 9.5f, 8.5f, 13.5f), color, style = st); drawPath(Path().apply { moveTo(4.5f * s, 9.5f * s); lineTo(14f * s, 9.5f * s); quadraticTo(19.5f * s, 9.5f * s, 19.5f * s, 14.25f * s); quadraticTo(19.5f * s, 19f * s, 14f * s, 19f * s); lineTo(9f * s, 19f * s) }, color, style = st) }
             I.Eye -> { drawPath(Path().apply { moveTo(3f * s, 12f * s); quadraticTo(12f * s, 3f * s, 21f * s, 12f * s); quadraticTo(12f * s, 21f * s, 3f * s, 12f * s); close() }, color, style = st); circ(12f, 12f, 2.8f) }
             I.Bell -> { drawPath(Path().apply { moveTo(6f * s, 16.5f * s); lineTo(6f * s, 11f * s); quadraticTo(6f * s, 5f * s, 12f * s, 5f * s); quadraticTo(18f * s, 5f * s, 18f * s, 11f * s); lineTo(18f * s, 16.5f * s); close() }, color, style = st); line(4.5f, 16.5f, 19.5f, 16.5f); line(10.5f, 19.5f, 13.5f, 19.5f) }
             I.Menu -> { line(4f, 7f, 20f, 7f); line(4f, 12f, 20f, 12f); line(4f, 17f, 14f, 17f) }

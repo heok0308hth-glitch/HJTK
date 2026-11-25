@@ -437,6 +437,7 @@ class Conductor(
         appendLine("결과물: ${p.deliverable}")
         appendLine("합격 기준: " + p.criteria.joinToString(" / "))
         if (p.finalHow.isNotBlank()) appendLine("합치는 방식: ${p.finalHow}")
+        ctx.activeSkillGuide?.let { appendLine("작업 지침: $it") }
         appendLine(); appendLine("팀원 결과:"); appendLine(materials(synchronized(outputs) { outputs.keys.toList() }, difficulty.budgetChars + 4000))
         val d = board.digest(1800); if (d.isNotBlank()) { appendLine(); appendLine("팀 칠판(주의는 반드시 반영):"); appendLine(d) }
         appendLine(); append("위 결과를 하나의 완성된 결과물로 다듬어 써라. 중복은 합치고, 모순은 더 근거 있는 쪽으로, '주의'는 고쳐서, 출처는 살려라. 제목부터 바로 시작.")

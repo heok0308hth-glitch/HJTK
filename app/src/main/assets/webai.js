@@ -2,7 +2,7 @@
    한 번 넣으면 window.__hjtkAi 가 생긴다. 설정(CFG)은 앱이 사이트별로 앞에 붙여 준다.
    원칙: 화면에 보이는 입력창에 글을 넣고 보내기를 누른 뒤, 마지막 답 요소의 글자를 읽는다. 클릭은 보내기 한 번뿐. */
 (function () {
-  if (window.__hjtkAi && window.__hjtkAi.v === 5) { window.__hjtkAi.cfg = window.__HJTK_CFG || window.__hjtkAi.cfg; return; }
+  if (window.__hjtkAi && window.__hjtkAi.v === 6) { window.__hjtkAi.cfg = window.__HJTK_CFG || window.__hjtkAi.cfg; return; }
   var cfg = window.__HJTK_CFG || {};
   function q(list) {
     for (var i = 0; i < (list || []).length; i++) {
@@ -21,9 +21,13 @@
     var els = all(api.cfg.answer); if (els.length) return els;
     var gen = document.querySelectorAll('[data-message-author-role="assistant"], .markdown, .prose, [class*="markdown"]');
     var out = [];
-    for (var i = 0; i < gen.length; i++) { var e = gen[i]; if (e.closest('[data-message-author-role="user"], [class*="user-message"], [class*="UserMessage"], form, textarea')) continue; if (out.length && out[out.length - 1].contains(e)) continue; out.push(e); }
+    for (var i = 0; i < gen.length; i++) { var e = gen[i]; if (e.closest('[data-message-author-role="user"], [data-testid*="user"], [data-role="user"], [class*="user-message"], [class*="UserMessage"], form, textarea')) continue; if (out.length && out[out.length - 1].contains(e)) continue; out.push(e); }
     return out;
   }
+  /* 3.7.1: 내가 보낸 말풍선은 답이 아니다. 보낸 글의 앞부분이 그대로 들어 있는 요소는 건너뛴다(사이트마다 사용자 말풍선 모양이 달라 글자로 거른다) */
+  function squash(s) { return (s || '').replace(/\s+/g, ''); }
+  function mine(el) { var k = api.sentKey; return !!k && squash(text(el)).indexOf(k) >= 0; }
+  function replies() { var els = answers(), out = []; for (var i = 0; i < els.length; i++) if (!mine(els[i])) out.push(els[i]); return out; }
   function vis(el) { if (!el) return false; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
   function text(el) { return el ? (el.innerText || el.textContent || '').replace(/ /g, ' ').trim() : ''; }
   function loginish() {
@@ -32,7 +36,7 @@
     return !!document.querySelector('input[type=password], input[type=email], input[name=email], input[autocomplete=username]');
   }
   var api = {
-    v: 5, cfg: cfg,
+    v: 6, cfg: cfg, sentKey: '',
     input: function () {
       var el = q(api.cfg.input); if (el) return el;
       // 사이트가 바뀌어 지정한 자리를 못 찾으면: 화면 아래쪽의 넓은 입력칸(채팅 입력창의 공통 모양)
@@ -48,12 +52,12 @@
       if (loginish()) return 'LOGIN';
       return 'LOADING';
     },
-    count: function () { return answers().length; },
-    last: function () { var els = answers(); return els.length ? text(els[els.length - 1]) : ''; },
+    count: function () { return replies().length; },
+    last: function () { var els = replies(); return els.length ? text(els[els.length - 1]) : ''; },
     /* 3.4: 보내기 전에 지금 있는 답에 표시 → 그 뒤에 생긴 답만 '새 답'. 새 대화 창에서 이전 답이 잘못 읽히는 일을 막는다 */
     mark: function () { var els = answers(); for (var i = 0; i < els.length; i++) els[i].setAttribute('data-hjtk-seen', '1'); return String(els.length); },
-    fresh: function () { var els = answers(), n = 0; for (var i = 0; i < els.length; i++) if (!els[i].closest('[data-hjtk-seen]')) n++; return String(n); },
-    lastFresh: function () { var els = answers(); for (var i = els.length - 1; i >= 0; i--) if (!els[i].closest('[data-hjtk-seen]')) return text(els[i]); return ''; },
+    fresh: function () { var els = replies(), n = 0; for (var i = 0; i < els.length; i++) if (!els[i].closest('[data-hjtk-seen]')) n++; return String(n); },
+    lastFresh: function () { var els = replies(); for (var i = els.length - 1; i >= 0; i--) if (!els[i].closest('[data-hjtk-seen]')) return text(els[i]); return ''; },
     /* 3.6 진단: 지금 화면에서 무엇을 찾았고 무엇을 못 찾았는지(입력창·보내기·답·로그인·보안 확인) */
     probe: function () {
       function hit(list) { for (var i = 0; i < (list || []).length; i++) { try { var e = document.querySelector(list[i]); if (e) return list[i]; } catch (x) {} } return ''; }
@@ -77,6 +81,7 @@
       return false;
     },
     put: function (t) {
+      var sq = squash(t); api.sentKey = sq.length > 40 ? sq.slice(0, 80) : '';
       var el = api.input(); if (!el) return 'NO_INPUT';
       el.focus();
       if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {

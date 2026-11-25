@@ -16,3 +16,4 @@ keystore.properties
 *.aab
 hs_err_pid*.log
 .kotlin/
+node_modules/

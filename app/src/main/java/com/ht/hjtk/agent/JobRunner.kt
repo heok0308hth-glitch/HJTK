@@ -31,6 +31,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -268,7 +269,10 @@ class JobRunner(private val h: Hjtk) {
             nowText = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd(E) HH:mm z", java.util.Locale.KOREA)),
             memories = MemoryIndex.search(store.memories.value, job.goal, 8).map { it.first.text }.ifEmpty { store.memories.value.takeLast(5).map { it.text } },
             hubSites = store.sites.value.map { "${it.name}(${it.url})" }, hubApps = store.apps.value.map { it.label },
-            skills = skills.map { it.name }, activeSkillGuide = active?.guide, userName = s.userName.ifBlank { null } ?.let { "$it · 사는 곳 ${s.homeCity}" }
+            skills = skills.map { it.name },
+            // 3.7.1: 3D를 원하는 목표면 팀 전체가 HT-Scene으로 실제 모델을 만든다(HJTK가 .glb·.obj로 굽는다)
+            activeSkillGuide = listOfNotNull(active?.guide, com.ht.hjtk.core.three.Studio3D.GUIDE.takeIf { com.ht.hjtk.core.three.Studio3D.wants3d(job.goal) }).joinToString("\n\n").ifBlank { null },
+            userName = s.userName.ifBlank { null } ?.let { "$it · 사는 곳 ${s.homeCity}" }
         )
         val tools = AndroidTools(h, job.id, job.convId, human, l.budget)
         // 새 작업은 '작업 공정'으로. 1.1 이전 형식으로 멈춘 작업만 옛 루프로 이어 간다.
@@ -310,7 +314,9 @@ class JobRunner(private val h: Hjtk) {
             pace = { when (com.ht.hjtk.engine.Thermal.level.value) { 3 -> delay(90_000); 2 -> delay(20_000); else -> Unit } },
             width = { when (com.ht.hjtk.engine.Thermal.level.value) { 0, 1 -> 3; 2 -> 2; else -> 1 } },
             deliver = { d -> deliverer.deliver(job.id, job.convId, d.title, d.order, d.summary, d.credit).map { o -> kindLabel(o.kind) + " — " + o.label } },
-            smoke = { path -> deliverer.smoke(job.id, path) })
+            smoke = { path -> deliverer.smoke(job.id, path) },
+            fileGuide = com.ht.hjtk.core.three.Studio3D::fileGuide,
+            validate = com.ht.hjtk.core.three.Studio3D::validate)
         else com.ht.ensemble.agent.Conductor(ctx, crewNow, tools, human, gate, l.control, { e -> onEvent(l, e); store.updateJob(job.id) { it.copy(tokens = ledger.total()) } },
             autoAllowE2 = s.autoAllowE2, difficulty = diff, ledger = ledger, catalog = com.ht.hjtk.core.agent.FoundryPrompts.catalogFor(job.goal, ctx.disabledCommands),
             files = com.ht.ensemble.agent.DirFiles(store.jobDir(job.id)),
@@ -541,6 +547,40 @@ class JobRunner(private val h: Hjtk) {
     fun fulfillPick(text: String?) { pickDeferred?.complete(text) }
 
     // ── 빠른 대화(작업 아님) ──────────────────────────────────────
+    /**
+     * 3D 스튜디오의 'AI에게 맡기기': 장면(JSON)과 요청을 코드에 강한 AI부터 차례로 보내, 열리는 장면이 돌아오면 그걸 쓴다.
+     * 지시문을 돌려주거나, 형식이 틀리거나, 한도에 걸리면 다음 AI로(최대 3명). (새 장면 JSON, 맡은 AI) 또는 (null, 이유)
+     */
+    suspend fun sculpt(sceneJson: String, request: String, onStep: (String) -> Unit = {}): Pair<String?, String> = withContext(Dispatchers.Default) {
+        val crew = crewFor("studio3d", com.ht.ensemble.ai.Difficulty.QUICK)
+        val order = crew.members().filter { crew.available(it) }.sortedByDescending { crew.rate(it, com.ht.ensemble.ai.AiProfiles.Skill.CODE) }.take(3)
+        if (order.isEmpty()) return@withContext null to "연결된 AI가 없어요 · 허브 → 계정 하나로에서 연결해 주세요"
+        val empty = !sceneJson.contains("\"shape\"")
+        val prompt = buildString {
+            appendLine("[3D 장면 ${if (empty) "만들기" else "수정"}] 너는 3D 모델러다. ${if (empty) "요청한 것을 HT-Scene으로 만들어라." else "아래 HT-Scene을 요청대로 고쳐라. 바꾸라고 하지 않은 부분은 그대로 둔다."}")
+            appendLine("요청: $request")
+            appendLine(com.ht.mesh.Scene.SPEC)
+            if (!empty) { appendLine("현재 장면:"); appendLine(sceneJson) }
+            append("완성된 장면 JSON 하나만 출력한다. 설명·인사 없이.")
+        }
+        val why = ArrayList<String>()
+        for (m in order) {
+            onStep("${m.name}가 ${if (empty) "만드는" else "고치는"} 중")
+            val r = runCatching { crew.port(m, 0).send(prompt, "studio3d", 0, true) }.getOrNull()
+            val text = r?.text.orEmpty()
+            val bad = when {
+                r == null || text.isBlank() -> "답 없음"
+                com.ht.ensemble.ai.AiProfiles.limitHit(text, r.via) -> "사용량 한도"
+                com.ht.ensemble.agent.Gate.echo(text, prompt) -> "지시문을 돌려줌"
+                else -> com.ht.mesh.Scene.problem(text)
+            }
+            crew.report(m, bad == null, r?.ms ?: 0, text, r?.via ?: "")
+            if (bad == null) return@withContext com.ht.mesh.Scene.parse(text).toJson().toString() to m.name
+            why += "${m.name}: $bad"
+        }
+        null to why.joinToString(" · ")
+    }
+
     fun quickAsk(convId: String, text: String, image: String? = null) {
         busyQuick.update { it + convId }
         scope.launch {

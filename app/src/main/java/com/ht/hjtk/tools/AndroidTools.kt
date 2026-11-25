@@ -310,6 +310,20 @@ class AndroidTools(
         // ── 파일 ───────────────────────────────────────────────
         put("file.write") { c -> val n = safeName(c.arg("name")); File(dir, n).writeText(c.arg("content")); CommandResult.ok("저장: $n (${c.arg("content").length}자)", Artifact(n, "text/plain", "")) }
         put("task.artifact") { c -> val n = safeName(c.arg("name")); File(dir, n).writeText(c.arg("content")); store.msg(convId, Role.AI, "결과물 저장: $n", "artifact", mapOf("file" to n, "job" to jobId)); CommandResult.ok("결과물 저장: $n", Artifact(n, "text/plain", "")) }
+        put("3d.build") { c ->
+            val text = c.arg("scene")
+            com.ht.mesh.Scene.problem(text)?.let { return@put fail("장면을 만들 수 없어요: $it\n형식:\n${com.ht.mesh.Scene.SPEC}") }
+            val scene = com.ht.mesh.Scene.parse(text).also { s -> c.arg("name").takeIf { it.isNotBlank() }?.let { s.name = it } }
+            val name = com.ht.hjtk.core.three.Studio3D.slug(scene.name)
+            val sceneFile = File(dir, "model/$name.scene.json").also { it.parentFile?.mkdirs(); it.writeText(scene.toJson().toString(2)) }
+            com.ht.hjtk.core.three.Studio3D.save(store.workspace, scene)
+            val b = com.ht.hjtk.core.three.Studio3D.build(scene, File(dir, "dist"), name)
+            val saved = com.ht.hjtk.core.three.Studio3D.toDownloads(ctx, listOf(b.glb, b.obj, b.mtl, b.png), name)
+            fun rel(f: File) = f.relativeTo(dir).path.replace('\\', '/')
+            store.msg(convId, Role.AI, scene.name, "deliver", mapOf("job" to jobId, "title" to scene.name, "glb" to rel(b.glb), "glb_label" to "${b.stats} · .glb·.obj",
+                "scene" to rel(sceneFile), "png" to rel(b.png)) + (if (saved > 0) mapOf("saved" to "다운로드/HJTK/3D/$name") else emptyMap()))
+            CommandResult.ok("3D 모델 완성: ${scene.name} · ${b.stats}" + if (saved > 0) " · 다운로드/HJTK/3D/$name 에 .glb·.obj·.png 저장" else "", Artifact(rel(b.glb), "model/gltf-binary", ""))
+        }
         put("file.append") { c -> val n = safeName(c.arg("name")); File(dir, n).appendText(c.arg("content") + "\n"); ok("이어씀: $n") }
         put("file.read") { c -> val f = File(dir, safeName(c.arg("name"))).takeIf { it.exists() } ?: File(store.workspace, "shared/" + safeName(c.arg("name"))); if (!f.exists()) fail("파일 없음") else ok(f.readText().take(c.int("max", 12000))) }
         put("file.list") { _ -> ok((dir.listFiles()?.sortedBy { it.name } ?: emptyList()).joinToString("\n") { "${it.name} (${it.length()}B)" }.ifBlank { "파일 없음" }) }
