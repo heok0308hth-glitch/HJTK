@@ -48,7 +48,7 @@ jobs:
 
       - name: 3D exports pass the Khronos glTF validator
         run: |
-          npm i --no-save gltf-validator@2 >/dev/null
+          npm i --no-save gltf-validator@2.0.0-dev.3.10 >/dev/null
           node tools/gltf_validate.js build/mesh-out/*.glb | tee /tmp/gltf.txt
           ! grep -E "errors [1-9]" /tmp/gltf.txt
 
