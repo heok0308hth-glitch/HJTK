@@ -14,9 +14,9 @@
 > **Don't make tool, make innovation.**
 
 <p align="center">
-  <a href="https://github.com/heok0308hth-glitch/HJTK/releases/download/v3.7.0/HJTK-3.7.0.apk"><b>↓ HJTK 3.7.0 APK 내려받기</b></a>
+  <a href="https://github.com/heok0308hth-glitch/HJTK/releases/download/v3.7.1/HJTK-3.7.1.apk"><b>↓ HJTK 3.7.1 APK 내려받기</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/heok0308hth-glitch/HJTK/releases/tag/v3.7.0">릴리스 노트</a>
+  <a href="https://github.com/heok0308hth-glitch/HJTK/releases/tag/v3.7.1">릴리스 노트</a>
   &nbsp;·&nbsp;
   <a href="https://github.com/heok0308hth-glitch/HJTK/releases">이전 버전</a>
 </p>
@@ -244,7 +244,7 @@ Kotlin·Java 약 17,000줄 · 모듈 6개 · 명령어 150개 이상.
 
 ## 설치
 
-- **[HJTK-3.7.0.apk](https://github.com/heok0308hth-glitch/HJTK/releases/download/v3.7.0/HJTK-3.7.0.apk)** — Android 9(API 28) 이상 · arm64-v8a · 약 20MB. [릴리스 노트 · 이전 버전](https://github.com/heok0308hth-glitch/HJTK/releases)
+- **[HJTK-3.7.1.apk](https://github.com/heok0308hth-glitch/HJTK/releases/download/v3.7.1/HJTK-3.7.1.apk)** — Android 9(API 28) 이상 · arm64-v8a · 약 21MB. [릴리스 노트 · 이전 버전](https://github.com/heok0308hth-glitch/HJTK/releases)
 - 내려받은 APK를 열고, 처음 한 번 "HJTK에서 앱 설치 허용"을 켜면 됩니다. Play 프로텍트가 검사 화면을 띄울 수 있습니다.
 - 이 APK에는 개인 목소리 지문이 들어 있지 않습니다. AI 통화에서 내 목소리를 쓰려면 앱에서 직접 등록하세요.
 - 소스에서 빌드하려면 아래 '검증'의 명령을 쓰고, 릴리스 서명 설정은 그 아래를 참고하세요.
